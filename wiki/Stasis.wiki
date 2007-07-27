@@ -18,9 +18,18 @@ There are two alternative API's that we'd like to support:
  * _skiplock_ - Traverse queue; move to next entry if head is locked; allows concurrent dequeue) for reliable queues 
  * _field calls_ - register check at update. On commit, see if condition still holds. If so, apply change. (also look at p{{{*}}} time in vldb for tricks w/ XOR; was done by company called Transact In Memory) 
 
+== B Tree plans ==
 
+Initially, Stasis' B-Tree will only support append and read operations. This allows it to support fast bulk loading operations, and avoids the complexity of dealing with page splits, etc. MySQL is going to be interested in the following types of index probes:
 
+ * Full table scan
+ * Full index scan
+ * Range scan
+ * Point query 
 
+Moving foward there are a number of optimizations / implementation strategies to consider:
 
-
+ * Row Cache: Frequently accessed items could be moved into an in-memory data strucuture. (InnoDB does this)
+ * Sparse Index: Instead of storing each value in the tree, store a single key per data page. If items are sorted within each page, then this is sufficient.
+  ** This is a nice general purpose technique if index probes usually return a tuple. 
 
