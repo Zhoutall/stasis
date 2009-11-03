@@ -1,9 +1,7 @@
 #ifndef STASIS_LHTABLE_H
 #define STASIS_LHTABLE_H
 
-#ifndef LH_ENTRY
 #define LH_ENTRY(foo) lh##foo
-#endif // LH_ENTRY
 
 typedef void LH_ENTRY(value_t);
 typedef void LH_ENTRY(key_t);
@@ -15,9 +13,7 @@ struct LH_ENTRY(pair_t) {
   struct LH_ENTRY(pair_t) * next;
 };
 
-#ifndef PBL_COMPAT
 #define PBL_COMPAT 1
-#endif
 
 /**
    @todo The current implementation (and interface) hardcodes the idea

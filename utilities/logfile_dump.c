@@ -1,13 +1,10 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 
-#include <stasis/operations.h>
 #include <stasis/logger/logHandle.h>
 #include <stasis/logger/logger2.h>
 #include <stasis/logger/safeWrites.h>
-#include <stasis/flags.h>
 
 static char * logEntryToString(const LogEntry * le) {
   char * ret = NULL;
@@ -67,8 +64,7 @@ int main() {
   stasis_log_t* log;
   if(NULL == (log = stasis_log_safe_writes_open(stasis_log_file_name,
                                                 stasis_log_file_mode,
-                                                stasis_log_file_permissions,
-                                                stasis_log_softcommit))){
+                                                stasis_log_file_permissions))){
     printf("Couldn't open log.\n");
   }
 

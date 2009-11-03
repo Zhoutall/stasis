@@ -2,7 +2,6 @@
 
 use strict;
 
-my $infile;
 
 my $CI80 = 1;
 my $CI90 = 2;
@@ -139,9 +138,6 @@ while (@ARGV) {
 	print "tdist: $tdist\n";
 	shift @ARGV;
 	shift @ARGV;
-    } elsif (-f $ARGV[0] ) {
-	$infile = $ARGV[0];
-	shift @ARGV;
     }
 
     else {
@@ -152,20 +148,6 @@ while (@ARGV) {
 parse_t_distribution;
 
 
-if($infile) {
-  open IN, $infile;
-  while (my $cmd = <IN>) {
-    if($cmd !~ /^#/) {
-	print $cmd;
-        runbatch($cmd);
-    }
-  }
-  close IN;
-} else {
-  while (my $cmd = <>) {
-    if($cmd !~ /^#/) {
-	print $cmd;
-        runbatch($cmd);
-    }
-  }
+while (my $cmd = <>) {
+    runbatch($cmd);
 }

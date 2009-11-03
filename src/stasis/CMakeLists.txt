@@ -1,4 +1,4 @@
-ADD_LIBRARY(stasis crc32.c redblack.c lhtable.c concurrentHash.c rw.c doubleLinkedList.c
+ADD_LIBRARY(stasis crc32.c redblack.c lhtable.c rw.c doubleLinkedList.c
                    common.c flags.c stats.c bufferManager.c
                    linkedlist.c operations.c pageHandle.c 
                    bufferManager/legacy/pageFile.c
@@ -6,7 +6,7 @@ ADD_LIBRARY(stasis crc32.c redblack.c lhtable.c concurrentHash.c rw.c doubleLink
                    bufferManager/legacy/legacyBufferManager.c
                    page.c bufferPool.c blobManager.c
                    recovery2.c truncation.c transactional2.c
-                   dirtyPageTable.c transactionTable.c
+                   dirtyPageTable.c
                    allocationPolicy.c lockManager.c iterator.c
                    consumer.c arrayCollection.c ringbuffer.c fifo.c
                    multiplexer.c graph.c logger/logEntry.c

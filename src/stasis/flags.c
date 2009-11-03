@@ -2,18 +2,14 @@
 #include <stasis/flags.h>
 #include <stasis/constants.h>
 
-#include <stasis/bufferManager/bufferHash.h>
-#include <stasis/bufferManager/pageArray.h>
-#include <stasis/bufferManager/legacy/legacyBufferManager.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#ifdef STASIS_BUFFER_MANAGER_FACTORY
-stasis_buffer_manager_t * stasis_buffer_manager_factory = STASIS_BUFFER_MANAGER_FACTORY;
+#ifdef BUFFER_MANAGER_TYPE
+int bufferManagerType = BUFFER_MANAGER_TYPE;
 #else
-stasis_buffer_manager_t * (*stasis_buffer_manager_factory)(stasis_log_t*, stasis_dirty_page_table_t*) = stasis_buffer_manager_hash_factory;
+int bufferManagerType = BUFFER_MANAGER_HASH;
 #endif
 
 #ifdef BUFFER_MANAGER_O_DIRECT
@@ -36,7 +32,7 @@ int bufferManagerNonBlockingSlowHandleType = IO_HANDLE_PFILE;
 #endif
 
 #ifdef STASIS_SUPPRESS_UNCLEAN_SHUTDOWN_WARNINGS
-#error stasis_suppress_unclean_shutdown_warnings cannot be set at compile time.
+#error stasus_suppress_unclean_shutdown_warnings cannot be set at compile time.
 #endif
 int stasis_suppress_unclean_shutdown_warnings = 0;
 
@@ -52,11 +48,6 @@ int stasis_log_type = STASIS_LOG_TYPE;
 int stasis_log_type = LOG_TO_FILE;
 #endif
 
-#ifdef STASIS_LOG_IN_MEMORY_MAX_ENTRIES
-size_t stasis_log_in_memory_max_entries = STASIS_LOG_IN_MEMORY_MAX_ENTRIES;
-#else
-size_t stasis_log_in_memory_max_entries = 0;  // unlimited
-#endif
 
 #ifdef STASIS_LOG_FILE_NAME
 char * stasis_log_file_name = STASIS_LOG_FILE_NAME;
@@ -73,7 +64,7 @@ char * stasis_store_file_name = "storefile.txt";
 #ifdef STASIS_LOG_FILE_MODE
 int stasis_log_file_mode = STASIS_LOG_FILE_MODE;
 #else
-int stasis_log_file_mode = (O_CREAT | O_RDWR);
+int stasis_log_file_mode = (O_CREAT | O_RDWR | O_SYNC);
 #endif
 
 #ifdef STASIS_LOG_FILE_PERMISSIONS
@@ -81,12 +72,6 @@ int stasis_log_file_permissions = STASIS_LOG_FILE_PERMISSIONS;
 #else
 int stasis_log_file_permissions = (S_IRUSR | S_IWUSR | S_IRGRP|
                                    S_IWGRP | S_IROTH | S_IWOTH);
-#endif
-
-#ifdef STASIS_LOG_SOFTCOMMIT
-int stasis_log_softcommit = STASIS_LOG_SOFTCOMMIT;
-#else
-int stasis_log_softcommit = 0;
 #endif
 
 #ifdef STASIS_LOG_DIR

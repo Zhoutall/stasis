@@ -52,16 +52,16 @@ terms specified in this license.
 #include <stasis/logger/inMemoryLog.h>
 #include <stasis/page.h>
 
-static lsn_t stasis_log_write_common(stasis_log_t* log, stasis_transaction_table_entry_t * l, int type) {
+static lsn_t stasis_log_write_common(stasis_log_t* log, TransactionLog * l, int type) {
   LogEntry * e = allocCommonLogEntry(l->prevLSN, l->xid, type);
   lsn_t ret;
 
   log->write_entry(log, e);
 
-//  pthread_mutex_lock(&l->mut);
-  if(l->prevLSN == INVALID_LSN) { l->recLSN = e->LSN; }
+  pthread_mutex_lock(&l->mut);
+  if(l->prevLSN == -1) { l->recLSN = e->LSN; }
   l->prevLSN = e->LSN;
-//  pthread_mutex_unlock(&l->mut);
+  pthread_mutex_unlock(&l->mut);
 
   DEBUG("Log Common %d, LSN: %ld type: %ld (prevLSN %ld)\n", e->xid,
 	 (long int)e->LSN, (long int)e->type, (long int)e->prevLSN);
@@ -73,7 +73,7 @@ static lsn_t stasis_log_write_common(stasis_log_t* log, stasis_transaction_table
   return ret;
 }
 
-static lsn_t stasis_log_write_prepare(stasis_log_t* log, stasis_transaction_table_entry_t * l) {
+static lsn_t stasis_log_write_prepare(stasis_log_t* log, TransactionLog * l) {
   LogEntry * e = allocPrepareLogEntry(l->prevLSN, l->xid, l->recLSN);
   lsn_t ret;
 
@@ -81,10 +81,10 @@ static lsn_t stasis_log_write_prepare(stasis_log_t* log, stasis_transaction_tabl
         e->xid, e->prevLSN, l->recLSN, getPrepareRecLSN(e));
   log->write_entry(log, e);
 
-//  pthread_mutex_lock(&l->mut);
-  if(l->prevLSN == INVALID_LSN) { l->recLSN = e->LSN; }
+  pthread_mutex_lock(&l->mut);
+  if(l->prevLSN == -1) { l->recLSN = e->LSN; }
   l->prevLSN = e->LSN;
-//  pthread_mutex_unlock(&l->mut);
+  pthread_mutex_unlock(&l->mut);
   DEBUG("Log Common prepare XXX %d, LSN: %ld type: %ld (prevLSN %ld)\n",
         e->xid, (long int)e->LSN, (long int)e->type, (long int)e->prevLSN);
 
@@ -96,7 +96,7 @@ static lsn_t stasis_log_write_prepare(stasis_log_t* log, stasis_transaction_tabl
 
 }
 
-LogEntry * stasis_log_write_update(stasis_log_t* log, stasis_transaction_table_entry_t * l,
+LogEntry * stasis_log_write_update(stasis_log_t* log, TransactionLog * l,
                      pageid_t page, unsigned int op,
 		     const byte * arg, size_t arg_size) {
 
@@ -106,24 +106,24 @@ LogEntry * stasis_log_write_update(stasis_log_t* log, stasis_transaction_table_e
   log->write_entry(log, e);
   DEBUG("Log Update %d, LSN: %ld type: %ld (prevLSN %ld) (arg_size %ld)\n", e->xid,
 	 (long int)e->LSN, (long int)e->type, (long int)e->prevLSN, (long int) arg_size);
-//  pthread_mutex_lock(&l->mut);
-  if(l->prevLSN == INVALID_LSN) { l->recLSN = e->LSN; }
+  pthread_mutex_lock(&l->mut);
+  if(l->prevLSN == -1) { l->recLSN = e->LSN; }
   l->prevLSN = e->LSN;
-//  pthread_mutex_unlock(&l->mut);
+  pthread_mutex_unlock(&l->mut);
   return e;
 }
 
-LogEntry * stasis_log_begin_nta(stasis_log_t* log, stasis_transaction_table_entry_t * l, unsigned int op,
+LogEntry * stasis_log_begin_nta(stasis_log_t* log, TransactionLog * l, unsigned int op,
                                 const byte * arg, size_t arg_size) {
   LogEntry * e = allocUpdateLogEntry(l->prevLSN, l->xid, op, INVALID_PAGE, arg, arg_size);
   return e;
 }
-lsn_t stasis_log_end_nta(stasis_log_t* log, stasis_transaction_table_entry_t * l, LogEntry * e) {
+lsn_t stasis_log_end_nta(stasis_log_t* log, TransactionLog * l, LogEntry * e) {
   log->write_entry(log, e);
-//  pthread_mutex_lock(&l->mut);
-  if(l->prevLSN == INVALID_LSN) { l->recLSN = e->LSN; }
+  pthread_mutex_lock(&l->mut);
+  if(l->prevLSN == -1) { l->recLSN = e->LSN; }
   lsn_t ret = l->prevLSN = e->LSN;
-//  pthread_mutex_unlock(&l->mut);
+  pthread_mutex_unlock(&l->mut);
   freeLogEntry(e);
   return ret;
 }
@@ -149,46 +149,40 @@ lsn_t stasis_log_write_dummy_clr(stasis_log_t* log, int xid, lsn_t prevLSN) {
   return ret;
 }
 
-void stasis_log_begin_transaction(stasis_log_t* log, int xid, stasis_transaction_table_entry_t* tl) {
+void stasis_log_begin_transaction(stasis_log_t* log, int xid, TransactionLog* tl) {
   tl->xid = xid;
 
   DEBUG("Log Begin %d\n", xid);
-  tl->prevLSN = INVALID_LSN;
-  tl->recLSN = INVALID_LSN;
+  tl->prevLSN = -1;
+  tl->recLSN = -1;
 }
 
-lsn_t stasis_log_abort_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l) {
+lsn_t stasis_log_abort_transaction(stasis_log_t* log, TransactionLog * l) {
   return stasis_log_write_common(log, l, XABORT);
 }
-lsn_t stasis_log_end_aborted_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l) {
+lsn_t stasis_log_end_aborted_transaction(stasis_log_t* log, TransactionLog * l) {
 	return stasis_log_write_common(log, l, XEND);
 }
-lsn_t stasis_log_prepare_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l) {
+lsn_t stasis_log_prepare_transaction(stasis_log_t* log, TransactionLog * l) {
   lsn_t lsn = stasis_log_write_prepare(log, l);
   stasis_log_force(log, lsn, LOG_FORCE_COMMIT);
   return lsn;
 }
 
 
-lsn_t stasis_log_commit_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l, int force) {
+lsn_t stasis_log_commit_transaction(stasis_log_t* log, TransactionLog * l) {
   lsn_t lsn = stasis_log_write_common(log, l, XCOMMIT);
-  if(force) {
-    stasis_log_force(log, lsn, LOG_FORCE_COMMIT);
-  }
+  stasis_log_force(log, lsn, LOG_FORCE_COMMIT);
   return lsn;
 }
 
 void stasis_log_force(stasis_log_t* log, lsn_t lsn,
               stasis_log_force_mode_t mode) {
-  if(lsn == INVALID_LSN) {
-    log->force_tail(log,mode);
+  if((mode == LOG_FORCE_COMMIT) && log->group_force) {
+    stasis_log_group_force(log->group_force, lsn);
   } else {
-    if((mode == LOG_FORCE_COMMIT) && log->group_force) {
-      stasis_log_group_force(log->group_force, lsn);
-    } else {
-      if(log->first_unstable_lsn(log,mode) <= lsn) {
-        log->force_tail(log,mode);
-      }
+    if(log->first_unstable_lsn(log,mode) <= lsn) {
+      log->force_tail(log,mode);
     }
   }
 }

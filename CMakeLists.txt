@@ -71,21 +71,6 @@ int main(int argc, char * argv[]) {
 }
 " HAVE_O_DIRECT) 
 
-CHECK_C_SOURCE_COMPILES("#define _GNU_SOURCE
-#include <stdio.h>
-
-int main(int argc, char * argv[]) {
-    getline(0,0,0);
-}
-" HAVE_GETLINE) 
-
-CHECK_C_SOURCE_COMPILES("
-int main(int argc, char* argv[]) {
-  int i;
-  __sync_bool_compare_and_swap(&i, 0, 1);
-}
-" HAVE_GCC_ATOMICS)
-
 MACRO(CREATE_CHECK NAME)
   ADD_EXECUTABLE(${NAME} ${NAME}.c)
   TARGET_LINK_LIBRARIES(${NAME} ${COMMON_LIBRARIES})
@@ -113,8 +98,8 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/build
 LINK_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}/src/stasis)
 
 SET(COMMON_LIBRARIES stasis m pthread)
-SET(CMAKE_C_FLAGS "-g -Wall -pedantic -std=gnu99 -DPBL_COMPAT -D_FILE_OFFSET_BITS=64 ${CMAKE_C_FLAGS}")
-SET(CMAKE_CXX_FLAGS "-g -Wall -Wno-variadic-macros -Wno-long-long -pedantic -DPBL_COMPAT -D_FILE_OFFSET_BITS=64 ${CMAKE_CXX_FLAGS}")
+SET(CMAKE_C_FLAGS "-g -Wall -pedantic -std=gnu99 -DPBL_COMPAT ${CMAKE_C_FLAGS}")
+SET(CMAKE_CXX_FLAGS "-g -Wall -Wno-variadic-macros -Wno-long-long -pedantic -DPBL_COMPAT ${CMAKE_CXX_FLAGS}")
 
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/stasis
         DESTINATION include/

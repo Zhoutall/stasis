@@ -1,4 +1,5 @@
 #include "lsn_bench_common.h"
+
 int main(int argc, char ** argv) {
   unlink("storefile.txt");
   unlink("logfile.txt");
@@ -112,7 +113,7 @@ int main(int argc, char ** argv) {
             } */
     }
     if(net) {
-      last_lsn = stasis_transaction_table_get(stasis_runtime_transaction_table(), xid)->prevLSN;
+      last_lsn = stasis_transaction_table[xid%MAX_TRANSACTIONS].prevLSN;
     }
     Tcommit(xid);
   }

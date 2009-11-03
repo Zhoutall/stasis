@@ -91,6 +91,7 @@ terms specified in this license.
 /*#define MAX_BUFFER_SIZE 7 */
 #endif
 
+#define BUFFER_MANAGER_REOPEN 0
 #define BUFFER_MANAGER_HASH   1
 #define BUFFER_MANAGER_MEM_ARRAY 2
 #define BUFFER_MANAGER_DEPRECATED_HASH 3
@@ -178,8 +179,6 @@ terms specified in this license.
 //#define SLOT_TYPE_BASE PAGE_SIZE
 
 #define INVALID_XID (-1)
-
-#define INVALID_LSN (-1)
 
 /** This constant is used as a placeholder to mark slot locations that are invalid.
     @see slotted.c, indirect.c

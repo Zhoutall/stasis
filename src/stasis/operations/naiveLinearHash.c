@@ -1,4 +1,3 @@
-#include <stasis/bufferManager.h>
 #include <stasis/operations.h>
 #include <stasis/hash.h>
 #include <stasis/latches.h>

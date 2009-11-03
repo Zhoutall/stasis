@@ -125,7 +125,7 @@ START_TEST(operation_physical_do_undo) {
   DEBUG("D\n");
 
   p = loadPage(xid, rid.page);
-  writelock(p->rwlatch,0);
+  readlock(p->rwlatch,0);
   assert(10 == stasis_page_lsn_read(p)); // "page lsn not set correctly."
 
   setToTwo->LSN = 5;
@@ -642,7 +642,7 @@ START_TEST(operation_reorderable) {
 
     stasis_log_reordering_handle_t * rh
       = stasis_log_reordering_handle_open(
-                         stasis_transaction_table_get(stasis_runtime_transaction_table(), xid[0]),
+                         &stasis_transaction_table[xid[0]% MAX_TRANSACTIONS],
                          stasis_log(),
                          100, // bytes (far too low!)
                          10,  // log entries

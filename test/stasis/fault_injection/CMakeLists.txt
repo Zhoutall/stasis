@@ -1,4 +1,3 @@
-IF(HAVE_GETLINE) # XXX HACK.  Assume we're not on linux if we don't have getline, then don't even try to get this directory to build.
 ADD_EXECUTABLE(check_faultInjection fitest.c fisubject.c fichecker.c)
 TARGET_LINK_LIBRARIES(check_faultInjection  ${COMMON_LIBRARIES})
 
@@ -13,4 +12,3 @@ CONFIGURE_FILE(
     COPYONLY
   )
 ADD_TEST(check_faultInjection check_faultInjection)
-ENDIF(HAVE_GETLINE)

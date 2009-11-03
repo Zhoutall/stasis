@@ -3,8 +3,6 @@
 #include <string.h>
 
 #include <stasis/transactional.h>
-#include <stasis/bufferManager.h>
-#include <stasis/bufferManager/legacy/legacyBufferManager.h>
 #include <stasis/truncation.h>
 
 /*static stasis_handle_t * memory_factory(lsn_t off, lsn_t len, void * ignored) {
@@ -35,7 +33,7 @@ int main(int argc, char ** argv) {
   int direct = 0;
   int legacyBM = 0;
   int legacyFH = 0;
-  int stake = 0;
+
   long page_count = mb_to_page(100);
 
   for(int i = 1; i < argc; i++) {
@@ -43,7 +41,7 @@ int main(int argc, char ** argv) {
       direct = 1;
       bufferManagerO_DIRECT = 1;
     } else if(!strcmp(argv[i], "--deprecatedBM")) {
-      stasis_buffer_manager_factory = stasis_buffer_manager_deprecated_factory;
+      bufferManagerType = BUFFER_MANAGER_DEPRECATED_HASH;
       legacyBM = 1;
     } else if(!strcmp(argv[i], "--deprecatedFH")) {
       bufferManagerFileHandleType = BUFFER_MANAGER_FILE_HANDLE_DEPRECATED;
@@ -67,9 +65,6 @@ int main(int argc, char ** argv) {
     } else if(!strcmp(argv[i], "--mb")) {
       i++;
       page_count = mb_to_page(atoll(argv[i]));
-    } else if(!strcmp(argv[i], "--stake")) {
-      i++;
-      stake = mb_to_page(atoll(argv[i]));
     } else {
       printf("Unknown argument: %s\n", argv[i]);
       return 1;
@@ -83,21 +78,12 @@ int main(int argc, char ** argv) {
 
   Tinit();
 
-  if(stake) {
-    Page * p = loadPage(-1, stake);
-    writelock(p->rwlatch,0);
-    stasis_dirty_page_table_set_dirty(stasis_runtime_dirty_page_table(), p);
-    unlock(p->rwlatch);
+  for(long i =0; i < page_count; i++) {
+    Page * p = loadPage(-1, i);
+    stasis_dirty_page_table_set_dirty(stasis_dirty_page_table, p);
     releasePage(p);
   }
 
-  for(long i =0; i < page_count; i++) {
-    Page * p = loadPage(-1, i);
-    writelock(p->rwlatch,0);
-    stasis_dirty_page_table_set_dirty(stasis_runtime_dirty_page_table(), p);
-    unlock(p->rwlatch);
-    releasePage(p);
-  }
 
   Tdeinit();
   return 0;

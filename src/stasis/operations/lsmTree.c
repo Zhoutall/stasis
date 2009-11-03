@@ -3,8 +3,6 @@
 #include <stasis/operations/lsmTree.h>
 #include <stasis/truncation.h>
 #include <stasis/constants.h>
-#include <stasis/bufferManager.h>
-#include <stasis/transactional.h>
 //  XXX including fixed.h breaks page api encapsulation; we need a "last slot"
 // call.
 #include <stasis/page/fixed.h>
@@ -58,9 +56,7 @@ void TlsmRegionForceRid(int xid, void *conf) {
     a.regionList.slot = i;
     pageid_t pid;
     Tread(xid,a.regionList,&pid);
-    stasis_dirty_page_table_flush_range(stasis_runtime_dirty_page_table(), pid, pid+a.regionSize);
-    stasis_buffer_manager_t *bm = stasis_runtime_buffer_manager();
-    bm->forcePageRange(bm, pid, pid+a.regionSize);
+    stasis_dirty_page_table_flush_range(stasis_dirty_page_table, pid, pid+a.regionSize);
     //    TregionDealloc(xid,pid);
   }
 }

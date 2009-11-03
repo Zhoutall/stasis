@@ -1,5 +1,6 @@
 #include <stasis/common.h>
 
+#include <stasis/bufferManager.h>
 #include <stasis/pageHandle.h>
 #include <stasis/bufferPool.h>
 #include <stasis/bufferManager/legacy/pageFile.h>
@@ -20,42 +21,37 @@ static pthread_key_t lastPage;
 #define RW 1
 
 static void bufManBufDeinit();
-static compensated_function Page *bufManLoadPage(stasis_buffer_manager_t *ignored, int xid, pageid_t pageid, pagetype_t type);
-static compensated_function Page *bufManGetCachedPage(stasis_buffer_manager_t *ignored, int xid, pageid_t pageid);
-static compensated_function Page *bufManLoadUninitPage(stasis_buffer_manager_t *ignored, int xid, pageid_t pageid);
-static void bufManReleasePage (stasis_buffer_manager_t *ignored, Page * p);
+static compensated_function Page *bufManLoadPage(int xid, pageid_t pageid, pagetype_t type);
+static compensated_function Page *bufManGetCachedPage(int xid, pageid_t pageid);
+static compensated_function Page *bufManLoadUninitPage(int xid, pageid_t pageid);
+static void bufManReleasePage (Page * p);
 static void bufManSimulateBufferManagerCrash();
 
 static stasis_page_handle_t * page_handle;
 
 static stasis_buffer_pool_t * stasis_buffer_pool;
 
-static int pageWrite_legacyWrapper(stasis_buffer_manager_t *ignored, pageid_t pageid) {
-  Page * p = loadPage(-1, pageid);
-  // XXX this is unsafe; the page could be pinned!
+static void pageWrite_legacyWrapper(Page * p) {
   page_handle->write(page_handle,p);
-  releasePage(p);
-  return 0;
 }
 static void forcePageFile_legacyWrapper() {
   page_handle->force_file(page_handle);
 }
-static void forceRangePageFile_legacyWrapper(stasis_buffer_manager_t *ignored, lsn_t start, lsn_t stop) {
+static void forceRangePageFile_legacyWrapper(lsn_t start, lsn_t stop) {
   page_handle->force_range(page_handle, start, stop);
 }
 
-stasis_buffer_manager_t* stasis_buffer_manager_deprecated_open(stasis_page_handle_t * ph) {
+int stasis_buffer_manager_deprecated_open(stasis_page_handle_t * ph) {
     page_handle = ph;
-    stasis_buffer_manager_t * bm = malloc(sizeof(*bm));
-    bm->releasePageImpl = bufManReleasePage;
-    bm->loadPageImpl = bufManLoadPage;
-    bm->loadUninitPageImpl = bufManLoadUninitPage;
-    bm->getCachedPageImpl = bufManGetCachedPage;
-    bm->writeBackPage = pageWrite_legacyWrapper;
-    bm->forcePages = forcePageFile_legacyWrapper;
-    bm->forcePageRange = forceRangePageFile_legacyWrapper;
-    bm->stasis_buffer_manager_close = bufManBufDeinit;
-    bm->stasis_buffer_manager_simulate_crash = bufManSimulateBufferManagerCrash;
+    releasePageImpl = bufManReleasePage;
+    loadPageImpl = bufManLoadPage;
+    loadUninitPageImpl = bufManLoadUninitPage;
+    getCachedPageImpl = bufManGetCachedPage;
+    writeBackPage = pageWrite_legacyWrapper;
+    forcePages = forcePageFile_legacyWrapper;
+    forcePageRange = forceRangePageFile_legacyWrapper;
+    stasis_buffer_manager_close = bufManBufDeinit;
+    stasis_buffer_manager_simulate_crash = bufManSimulateBufferManagerCrash;
 
     stasis_buffer_pool = stasis_buffer_pool_init();
 
@@ -80,8 +76,7 @@ stasis_buffer_manager_t* stasis_buffer_manager_deprecated_open(stasis_page_handl
     profile_load_hash = LH_ENTRY(create)(10);
     profile_load_pins_hash = LH_ENTRY(create)(10);
 #endif
-    bm->impl = 0;  // XXX hack, but this module is deprecated
-    return bm;
+	return 0;
 }
 
 static void bufManBufDeinit() {
@@ -127,7 +122,7 @@ static void bufManSimulateBufferManagerCrash() {
 #endif
 }
 
-static void bufManReleasePage (stasis_buffer_manager_t *ignored, Page * p) {
+static void bufManReleasePage (Page * p) {
   unlock(p->loadlatch);
 #ifdef PIN_COUNT
   pthread_mutex_lock(&pinCount_mutex);
@@ -341,7 +336,7 @@ static Page* bufManGetPage(pageid_t pageid, int locktype, int uninitialized, pag
   return ret;
 }
 
-static compensated_function Page *bufManLoadPage(stasis_buffer_manager_t *ignored, int xid, const pageid_t pageid, pagetype_t type) {
+static compensated_function Page *bufManLoadPage(int xid, const pageid_t pageid, pagetype_t type) {
 
   Page * ret = pthread_getspecific(lastPage);
 
@@ -372,12 +367,12 @@ static compensated_function Page *bufManLoadPage(stasis_buffer_manager_t *ignore
   return ret;
 }
 
-static Page* bufManGetCachedPage(stasis_buffer_manager_t *ignored, int xid, const pageid_t pageid) {
+static Page* bufManGetCachedPage(int xid, const pageid_t pageid) {
   // XXX hack; but this code is deprecated
-  return bufManLoadPage(ignored, xid, pageid, UNKNOWN_TYPE_PAGE);
+  return bufManLoadPage(xid, pageid, UNKNOWN_TYPE_PAGE);
 }
 
-static compensated_function Page *bufManLoadUninitPage(stasis_buffer_manager_t *ignored, int xid, pageid_t pageid) {
+static compensated_function Page *bufManLoadUninitPage(int xid, pageid_t pageid) {
 
   Page * ret = pthread_getspecific(lastPage);
 
@@ -406,8 +401,4 @@ static compensated_function Page *bufManLoadUninitPage(stasis_buffer_manager_t *
 #endif
 
   return ret;
-}
-stasis_buffer_manager_t* stasis_buffer_manager_deprecated_factory(stasis_log_t *log, stasis_dirty_page_table_t *dpt) {
-  stasis_page_handle_t * ph = stasis_page_handle_default_factory(log, dpt);
-  return stasis_buffer_manager_deprecated_open(ph);
 }

@@ -62,10 +62,20 @@ typedef enum {
 } stasis_log_force_mode_t;
 
 #include <stasis/logger/groupForce.h>
-#include <stasis/logger/logEntry.h>
-#include <stasis/truncation.h>
 #include <stasis/constants.h>
-#include <stasis/transactionTable.h>
+/**
+   Contains the state needed by the logging layer to perform
+   operations on a transaction.
+ */
+typedef struct TransactionLog {
+  int xid;
+  lsn_t prevLSN;
+  lsn_t recLSN;
+  pthread_mutex_t mut;
+} TransactionLog;
+
+
+#include <stasis/operations.h>
 
 /**
    A callback function that allows logHandle's iterator to stop
@@ -73,6 +83,13 @@ typedef enum {
    called.
 */
 typedef int (guard_fcn_t)(const LogEntry *, void *);
+
+
+
+/**
+   XXX TransactionTable should be private to transactional2.c!
+*/
+extern TransactionLog stasis_transaction_table[MAX_TRANSACTIONS];
 
 /**
  * Interface provided by Stasis log implementations.
@@ -87,15 +104,6 @@ typedef int (guard_fcn_t)(const LogEntry *, void *);
  * @ingroup LOGGING_IMPLEMENTATIONS
  */
 struct stasis_log_t {
-  /**
-     Register a truncation policy with the log.
-
-     If this method is not called, and the log's length is
-     constrained by a hard limit, then truncation might not occur
-     promptly (or at all) when the log runs out of space.
-
-   */
-  void (*set_truncation)(struct stasis_log_t *log, stasis_truncation_t *trunc);
   /**
      Return the size of an implementation-specific log entry.
 
@@ -128,7 +136,7 @@ struct stasis_log_t {
 
      @param log "this" log object
      @param lsn  The LSN of the log entry to be read.  This must be the LSN of a valid log entry.
-     @return The LogEntry of interest.  Should be freed with freeLogEntry().  A NULL return value means the log was truncated past the requested entry.
+     @return The LogEntry of interest.  Should be freed with freeLogEntry().
   */
   const LogEntry* (*read_entry)(struct stasis_log_t* log, lsn_t lsn);
 
@@ -252,9 +260,7 @@ struct stasis_log_t {
 
    @param log A log that already contains the entries to be forced to disk.
    @param lsn Log entries up to and including the one that overlaps lsn will
-              be durable after this call returns.  If INVALID_LSN is passed in,
-              the log will be immediately forced up to the current tail, bypassing
-              group commit.
+              be durable after this call returns.
    @param mode The durability mode associated with this call.
 
    @see stasis_log_force_mode_t
@@ -266,7 +272,7 @@ void stasis_log_force(stasis_log_t* log, lsn_t lsn, stasis_log_force_mode_t mode
    Inform the logging layer that a new transaction has begun, and
    obtain a handle.
 */
-void stasis_log_begin_transaction(stasis_log_t* log, int xid, stasis_transaction_table_entry_t* l);
+void stasis_log_begin_transaction(stasis_log_t* log, int xid, TransactionLog* l);
 
 /**
    Write a transaction PREPARE to the log tail.  Blocks until the
@@ -274,27 +280,27 @@ void stasis_log_begin_transaction(stasis_log_t* log, int xid, stasis_transaction
 
    @return the lsn of the prepare log entry
 */
-lsn_t stasis_log_prepare_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l);
+lsn_t stasis_log_prepare_transaction(stasis_log_t* log, TransactionLog * l);
 /**
    Write a transaction COMMIT to the log tail.  Blocks until the commit
    record is stable.
 
    @return the lsn of the commit log entry.
 */
-lsn_t stasis_log_commit_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l, int force);
+lsn_t stasis_log_commit_transaction(stasis_log_t* log, TransactionLog * l);
 
 /**
    Write a transaction ABORT to the log tail.  Does not force the log.
 
    @return the lsn of the abort log entry.
 */
-lsn_t stasis_log_abort_transaction(stasis_log_t* log, stasis_transaction_table_entry_t * l);
+lsn_t stasis_log_abort_transaction(stasis_log_t* log, TransactionLog * l);
 
 /**
    Write a end transaction record.  This entry tells recovery's undo
    phase that it may safely ignore the transaction.
 */
-lsn_t stasis_log_end_aborted_transaction (stasis_log_t* log, stasis_transaction_table_entry_t * l);
+lsn_t stasis_log_end_aborted_transaction (stasis_log_t* log, TransactionLog * l);
 
 /**
    stasis_log_write_update writes an UPDATELOG log record to the log tail.  It
@@ -303,7 +309,7 @@ lsn_t stasis_log_end_aborted_transaction (stasis_log_t* log, stasis_transaction_
    state of the parameter l.
 */
 LogEntry * stasis_log_write_update(stasis_log_t* log,
-                     stasis_transaction_table_entry_t * l, pageid_t page, unsigned int operation,
+                     TransactionLog * l, pageid_t page, unsigned int operation,
                      const byte * arg, size_t arg_size);
 
 /**
@@ -319,7 +325,7 @@ lsn_t stasis_log_write_clr(stasis_log_t* log, const LogEntry * e);
 
 lsn_t stasis_log_write_dummy_clr(stasis_log_t* log, int xid, lsn_t prev_lsn);
 
-LogEntry * stasis_log_begin_nta(stasis_log_t* log, stasis_transaction_table_entry_t * l, unsigned int op,
+LogEntry * stasis_log_begin_nta(stasis_log_t* log, TransactionLog * l, unsigned int op,
                                 const byte * arg, size_t arg_size);
-lsn_t stasis_log_end_nta(stasis_log_t* log, stasis_transaction_table_entry_t * l, LogEntry * e);
+lsn_t stasis_log_end_nta(stasis_log_t* log, TransactionLog * l, LogEntry * e);
 #endif

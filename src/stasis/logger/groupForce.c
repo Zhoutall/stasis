@@ -5,17 +5,15 @@
  *      Author: sears
  */
 #include <stasis/logger/logger2.h>
-#include <stasis/transactional.h>
+
 #include <stdio.h>
 #include <assert.h>
-#include <sys/time.h>
 
 struct stasis_log_group_force_t {
     stasis_log_t * log;
     pthread_mutex_t check_commit;
     pthread_cond_t tooFewXacts;
     int pendingCommits;
-    int minNumActive;
     uint64_t wait_nsec;
 };
 
@@ -34,15 +32,6 @@ stasis_log_group_force_t * stasis_log_group_force_init(stasis_log_t * log, uint6
   ret->pendingCommits = 0;
   ret->wait_nsec = wait_nsec;
   return ret;
-}
-
-static int stasis_log_group_force_should_wait(int xactcount, int pendingCommits) {
-  if((xactcount > 1 && pendingCommits < xactcount) ||
-     (xactcount > 20 && pendingCommits < (int)((double)xactcount * 0.95))) {
-    return 1;
-  } else {
-    return 0;
-  }
 }
 
 void stasis_log_group_force(stasis_log_group_force_t* lh, lsn_t lsn) {
@@ -71,8 +60,9 @@ void stasis_log_group_force(stasis_log_group_force_t* lh, lsn_t lsn) {
     }
 
     lh->pendingCommits++;
-    int xactcount = TactiveThreadCount();
-    if(stasis_log_group_force_should_wait(xactcount, lh->pendingCommits)) {
+    int xactcount = TactiveTransactionCount();
+    if((xactcount > 1 && lh->pendingCommits < xactcount) ||
+       (xactcount > 20 && lh->pendingCommits < (int)((double)xactcount * 0.95))) {
       int retcode;
       while(ETIMEDOUT != (retcode = pthread_cond_timedwait(&lh->tooFewXacts, &lh->check_commit, &timeout))) {
         if(retcode != 0) {
@@ -93,7 +83,6 @@ void stasis_log_group_force(stasis_log_group_force_t* lh, lsn_t lsn) {
   }
   if(lh->log->first_unstable_lsn(lh->log,LOG_FORCE_COMMIT) <= lsn) {
     lh->log->force_tail(lh->log, LOG_FORCE_COMMIT);
-    lh->minNumActive = 0;
     assert(lh->log->first_unstable_lsn(lh->log,LOG_FORCE_COMMIT) > lsn);
     pthread_cond_broadcast(&lh->tooFewXacts);
   }

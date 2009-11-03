@@ -312,11 +312,11 @@ static void* worker_thread(void * arg) {
 
     if(threshold < 3) {
       if(i > 10) {
-        needToTruncate = 1;
-        if(lsns[i - 10] > truncated_to) {
-          truncated_to = lsns[i - 10];
-          myTruncVal = truncated_to;
-        }
+	needToTruncate = 1;
+	if(lsns[i - 10] > truncated_to) {
+	  truncated_to = lsns[i - 10];
+	  myTruncVal = truncated_to;
+	}
       }
     }
 
@@ -355,14 +355,9 @@ static void* worker_thread(void * arg) {
       pthread_mutex_unlock(&random_mutex);
 
       const LogEntry * e = stasis_log_file->read_entry(stasis_log_file, lsn);
-      if(e == NULL) {
-        pthread_mutex_lock(&random_mutex);
-        assert(lsn < truncated_to);
-        pthread_mutex_unlock(&random_mutex);
-      } else {
-        assert(e->xid == entry+key);
-        freeLogEntry(e);
-      }
+
+      assert(e->xid == entry+key);
+      freeLogEntry(e);
     } else {
       pthread_mutex_unlock(&random_mutex);
     }
@@ -432,11 +427,12 @@ void reopenLogWorkload(int truncating) {
   const int SYNC_POINT = 900;
   stasis_log_t * stasis_log_file = 0;
 
+  stasis_transaction_table_active_transaction_count_set(0);
+
   if(LOG_TO_FILE == stasis_log_type) {
     stasis_log_file = stasis_log_safe_writes_open(stasis_log_file_name,
                                                   stasis_log_file_mode,
-                                                  stasis_log_file_permissions,
-                                                  stasis_log_softcommit);
+                                                  stasis_log_file_permissions);
   } else if(LOG_TO_MEMORY == stasis_log_type) {
     stasis_log_file = stasis_log_impl_in_memory_open();
   } else {
@@ -444,8 +440,8 @@ void reopenLogWorkload(int truncating) {
   }
 
   int xid = 1;
-  stasis_transaction_table_entry_t l;
-//  pthread_mutex_init(&l.mut,0);
+  TransactionLog l;
+  pthread_mutex_init(&l.mut,0);
   stasis_log_begin_transaction(stasis_log_file, xid, &l);
   lsn_t startLSN = 0;
 
@@ -469,8 +465,7 @@ void reopenLogWorkload(int truncating) {
   if(LOG_TO_FILE == stasis_log_type) {
     stasis_log_file = stasis_log_safe_writes_open(stasis_log_file_name,
                                                   stasis_log_file_mode,
-                                                  stasis_log_file_permissions,
-                                                  stasis_log_softcommit);
+                                                  stasis_log_file_permissions);
   } else if(LOG_TO_MEMORY == stasis_log_type) {
     stasis_log_file = stasis_log_impl_in_memory_open();
   } else {

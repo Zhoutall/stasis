@@ -43,7 +43,6 @@ terms specified in this license.
 
 #include <config.h>
 #include <stasis/common.h>
-#include <stasis/flags.h>
 
 #include <stasis/latches.h>
 #include <stasis/crc32.h>
@@ -409,17 +408,11 @@ static void syncLog_LogWriter(stasis_log_t * log,
   pthread_mutex_unlock(&sw->write_mutex);
 
   fflush(sw->fp);
-
-  // We can skip the fsync if we opened with O_SYNC, or if we're in softcommit mode, and not forcing for WAL.
-
-  if((sw->softcommit && mode == LOG_FORCE_WAL)  // soft commit mode; syncing for wal
-      || !(sw->softcommit || (sw->filemode & O_SYNC)) // neither soft commit nor opened with O_SYNC
-  ) {
-#ifdef HAVE_FDATASYNC
-  fdatasync(fileno(sw->fp));
-#else
-  fsync(fileno(sw->fp));
-#endif
+  // If we opened the logfile with O_SYNC, fflush() is sufficient.
+  // Otherwise, we're running in soft commit mode and need to manually force
+  // the log before allowing page writeback.
+  if(sw->softcommit && mode == LOG_FORCE_WAL) {
+    fsync(fileno(sw->fp));
   }
 
   // update flushedLSN after fflush returns.
@@ -501,7 +494,7 @@ static const LogEntry * readLSNEntry_LogWriter(stasis_log_t * log, const lsn_t L
 
   if(LSN >= sw->nextAvailableLSN) {
     pthread_mutex_unlock(&sw->nextAvailableLSN_mutex);
-    return NULL;
+    return 0;
   }
   pthread_mutex_unlock(&sw->nextAvailableLSN_mutex);
 
@@ -514,11 +507,7 @@ static const LogEntry * readLSNEntry_LogWriter(stasis_log_t * log, const lsn_t L
     assert(flushedLSNInternal(sw) > LSN);
   }
 
-  if(sw->global_offset > LSN) {
-    // Return NULL; the caller read before the beginning of the log.
-    pthread_mutex_unlock(&sw->read_mutex);
-    return NULL;
-  }
+  assert(sw->global_offset <= LSN);
 
   off_t newPosition = LSN - sw->global_offset;
   newPosition = lseek(sw->ro_fd, newPosition, SEEK_SET);
@@ -758,15 +747,10 @@ static lsn_t firstLogEntry_LogWriter(stasis_log_t* log) {
   return ret;
 }
 
-static void setTruncation_LogWriter(stasis_log_t* log, stasis_truncation_t *trunc) {
-  // logwriter does not support hard limits on its size, so this is a no-op
-}
-
 stasis_log_t* stasis_log_safe_writes_open(const char * filename,
-                                          int filemode, int fileperm, int softcommit) {
+                                          int filemode, int fileperm) {
 
   stasis_log_t proto = {
-    setTruncation_LogWriter,
     sizeofInternalLogEntry_LogWriter, // sizeof_internal_entry
     writeLogEntry_LogWriter,// write_entry
     readLSNEntry_LogWriter, // read_entry
@@ -790,7 +774,7 @@ stasis_log_t* stasis_log_safe_writes_open(const char * filename,
   }
   sw->filemode = filemode;
   sw->fileperm = fileperm;
-  sw->softcommit = softcommit;
+  sw->softcommit = !(filemode & O_SYNC);
 
   stasis_log_t* log = malloc(sizeof(*log));
   memcpy(log,&proto, sizeof(proto));

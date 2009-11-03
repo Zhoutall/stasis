@@ -1,6 +1,5 @@
 #include <stasis/operations/arrayList.h>
-#include <stasis/bufferManager.h>
-#include <stasis/transactional.h>
+
 #include <assert.h>
 #include <math.h>
 

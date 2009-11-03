@@ -52,22 +52,20 @@ terms specified in this license.
  * $Id$
  *
  */
-#ifndef STASIS_TRUNCATION_H
-#define STASIS_TRUNCATION_H
 
-#include <stasis/common.h>
+#include <stasis/transactional.h>
 
 BEGIN_C_DECLS
+
+#ifndef STASIS_TRUNCATION_H
+#define STASIS_TRUNCATION_H
 
 typedef struct stasis_truncation_t stasis_truncation_t;
 
 #include <stasis/logger/logger2.h>
 #include <stasis/dirtyPageTable.h>
-#include <stasis/transactionTable.h>
-#include <stasis/bufferManager.h>
 
-stasis_truncation_t * stasis_truncation_init(stasis_dirty_page_table_t * dpt, stasis_transaction_table_t * tbl,
-                                             stasis_buffer_manager_t * bufferManager, stasis_log_t * log);
+stasis_truncation_t * stasis_truncation_init(stasis_dirty_page_table_t * dpt, stasis_log_t * log);
 void stasis_truncation_deinit(stasis_truncation_t * trunc);
 
 /**
@@ -78,5 +76,9 @@ void stasis_truncation_thread_start(stasis_truncation_t* trunc);
    Initiate a round of log truncation.
 */
 int stasis_truncation_truncate(stasis_truncation_t* trunc, int force);
+/**
+ * XXX if releasePage kept the dirty page table up to date, it would greatly reduce the number of places where the dirty page table is updated.
+ */
+extern stasis_dirty_page_table_t * stasis_dirty_page_table;
 END_C_DECLS
 #endif

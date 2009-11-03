@@ -1,10 +1,9 @@
 #include <stasis/rw.h>
 #include <assert.h>
 
-//#undef pthread_cond_wait
-//#undef pthread_cond_timedwait
+#undef pthread_cond_wait
+#undef pthread_cond_timedwait
 
-#ifndef HAVE_PTHREAD_RWLOCK
 
 rwl *initlock (void)
 {
@@ -162,4 +161,3 @@ void deletelock (rwl *lock)
 
 	return;
 }
-#endif

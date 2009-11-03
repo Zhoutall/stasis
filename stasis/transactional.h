@@ -560,14 +560,14 @@ BEGIN_C_DECLS
  *
  * @return 0 on success
  */
-int Tinit(void);
+int Tinit();
 
 /**
  * Start a new transaction, and return a new transaction id (xid).
  *
  * @return positive transaction ID (xid) on success, negative return value on error
  */
-int Tbegin(void);
+int Tbegin();
 
 /**
  * Used when extending Stasis.
@@ -633,16 +633,6 @@ compensated_function void TreadStr(int xid, recordid rid, char *dat);
 int Tcommit(int xid);
 
 /**
- * Non-durably commit an active transaction.  The transaction will still be atomic.
- */
-int TsoftCommit(int xid);
-/**
- * Make any non-durably committed transactions durable.  This call is not atomic;
- * some subset of the non-durable transactions may commit if the system crashes
- * before this call returns.
- */
-void TforceCommits(void);
-/**
  * Abort (rollback) an active transaction.  Each transaction should be
  * completed with exactly one call to Tcommit() or Tabort().
  *
@@ -659,7 +649,7 @@ int Tabort(int xid);
  *
  * @return 0 on success
  */
-int Tdeinit(void);
+int Tdeinit();
 /**
  * Uncleanly shutdown Stasis.  This function frees any resources that
  * Stasis is holding, and flushes the log, but it does not flush dirty
@@ -668,7 +658,7 @@ int Tdeinit(void);
  *
  * @return 0 on success
 */
-int TuncleanShutdown(void);
+int TuncleanShutdown();
 /**
  *  Used by the recovery process.
  *  Revives Tprepare'ed transactions.
@@ -725,7 +715,7 @@ lsn_t TendNestedTopAction(int xid, void * handle);
 
    @return an array of transaction ids.
  */
-int* TlistActiveTransactions(int *count);
+int* TlistActiveTransactions();
 
 /**
  * Checks to see if a transaction is still active.
@@ -737,8 +727,43 @@ int TisActiveTransaction(int xid);
 /*
  * @return the number of currently active transactions.
  */
-int TactiveThreadCount(void);
+int TactiveTransactionCount();
 
+/**
+   Initialize Stasis' transaction table.  Called by Tinit() and unit
+   tests that wish to test portions of Stasis in isolation.
+ */
+void stasis_transaction_table_init();
+
+/**
+ *  Used by recovery to prevent reuse of old transaction ids.
+ *
+ *  Should not be used elsewhere.
+ *
+ * @param xid  The highest transaction id issued so far.
+ */
+void stasis_transaction_table_max_transaction_id_set(int xid);
+/**
+ *  Used by test cases to mess with internal transaction table state.
+ *
+ * @param xid  The new active transaction count.
+ */
+void stasis_transaction_table_active_transaction_count_set(int xid);
+
+int stasis_transaction_table_roll_forward(int xid, lsn_t lsn, lsn_t prevLSN);
+/**
+   @todo update Tprepare() to not write reclsn to log, then remove
+         this function.
+ */
+int stasis_transaction_table_roll_forward_with_reclsn(int xid, lsn_t lsn,
+                                                      lsn_t prevLSN,
+                                                      lsn_t recLSN);
+int stasis_transaction_table_forget(int xid);
+
+/**
+    This is used by log truncation.
+*/
+lsn_t stasis_transaction_table_minRecLSN();
 /**
  * Called at the end of transactions aborted by recovery, after the transaction
  * has been completely rolled back (ie: all rollback entries are in the log's
@@ -756,29 +781,19 @@ int Tforget(int xid);
    apply committed transactions, and roll back active transactions
    after a crash.
 */
-int TdurabilityLevel(void);
+int TdurabilityLevel();
 
 /**
  * Force any dirty pages to disk, and truncate the log.  After this
  * function returns, the log will be as short as possible (outstanding
  * transactions can prevent it from completely emptying the log).
  */
-void TtruncateLog(void);
+void TtruncateLog();
 /**
  * XXX hack: return a pointer to stasis' log handle.  This works around the fact
  * that stasis_log_file is no longer global.
  */
 void * stasis_log(void);
-/**
- * XXX if releasePage kept the dirty page table up to date, it would greatly reduce the number of places where the dirty page table is updated.
- */
-void * stasis_runtime_dirty_page_table(void);
-
-void * stasis_runtime_transaction_table(void);
-
-void * stasis_runtime_alloc_state(void);
-
-void * stasis_runtime_buffer_manager(void);
 
 #include "operations.h"
 
