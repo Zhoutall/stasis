@@ -1,0 +1,5 @@
+#ifndef STASIS_BUFFERMANAGER_LEGACY_LEGACYBUFFERMANAGER_H
+#define STASIS_BUFFERMANAGER_LEGACY_LEGACYBUFFERMANAGER_H
+#include <stasis/pageHandle.h>
+int stasis_buffer_manager_deprecated_open(stasis_page_handle_t * ph);
+#endif//STASIS_BUFFERMANAGER_LEGACY_LEGACYBUFFERMANAGER_H

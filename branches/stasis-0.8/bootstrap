@@ -1,0 +1,11 @@
+#! /bin/sh
+
+rm -f configure.in
+ln -s configure.in.lite configure.in
+rm -f config.cache
+rm -f acconfig.h
+aclocal -I m4
+autoheader
+autoconf
+./configure --quiet
+
