@@ -1,0 +1,9 @@
+Stasis is a transactional storage library.
+
+Please see the COPYING file for licensing information, and INSTALL for
+compilation instructions.
+
+More information, including papers, a tutorial and API documentation
+are available at:
+
+http://www.cs.berkeley.edu/~sears/stasis/

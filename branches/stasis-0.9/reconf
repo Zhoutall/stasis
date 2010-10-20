@@ -1,0 +1,138 @@
+#!/usr/bin/env perl
+#
+#  @todo Rewrite this in sh
+#
+#  This perl script invokes autoreconf after setting ACLOCAL and AUTOMAKE to reasonably modern values.
+#  (>= aclocal-1.6, automake-1.6).
+#
+#  It is careful to avoid mixing versions of the two tools.
+#
+#  If you don't have perl, find sufficiently recent and matching versions of aclocal and automake, and invoke
+#  something like this (under bash):
+#
+#  ACLOCAL=/usr/bin/aclocal-1.8 AUTOMAKE=/usr/bin/automake-1.8 autoreconf
+#
+#  Stasis used to ship with the following two scripts; the first uses the system default, the second uses automake 1.8:
+#
+qq(
+
+#!/bin/sh
+rm -f configure.in
+ln -s configure.in.automake configure.in
+rm -f config.cache
+rm -f acconfig.h
+aclocal -I m4
+autoconf
+autoheader
+libtoolize --automake
+automake  -a
+exit
+
+);
+#
+#
+qq(
+
+#!/bin/sh
+rm -f configure.in
+ln -s configure.in.automake configure.in
+rm -f config.cache
+rm -f acconfig.h
+aclocal-1.8 -I m4
+autoconf
+autoheader
+libtoolize --automake
+automake-1.8  -a
+exit
+
+);
+#
+# The following uses system defaults, but no longer depends on libtool or automake.
+# It is the recommended approach.
+#
+qq(
+#!/bin/sh
+rm -f configure.in
+ln -s configure.in.lite configure.in
+rm -f config.cache
+rm -f acconfig.h
+aclocal -I m4
+autoconf
+autoheader
+);
+#
+
+warn qq(
+This script is obsolete; stasis no longer requires automake or libtool.
+
+To build with cmake, run:
+
+ mkdir build ; cd build ; cmake ..
+ make -j4
+);
+
+my $aclocal_base = `which aclocal` || die "aclocal not found!";
+my $automake_base = `which automake` || die "automake not found!";
+
+chomp $aclocal_base;
+chomp $automake_base;
+
+my @good_versions = qw(1.10 1.9 1.8 1.7 1.6);
+
+foreach my $i (@ARGV) { 
+    if ($i eq "-h" || $i eq "--help") { 
+	print 
+qq(Usage: $0 [options]
+
+This program is a thin wrapper on top of autoreconf.  It looks for an 
+appropriate version of aclocal and automake, and then invokes autoreconf.  
+
+It takes the same options as autoreconf, whose usage string is repeated below:
+
+);
+    }
+}
+
+my $version;
+foreach my $i (@good_versions) {
+    if ((-x "$aclocal_base-$i") && (-x "$automake_base-$i")) { 
+	$version = $i;
+	break;
+    }
+}
+
+if(! $version ) { 
+    print 
+qq(
+*****************************************************************************************
+No appropriate version of automake was found.  
+
+Please install a version between 1.6 and 1.9, or add a directory containing automake-1.n 
+and aclocal-1.n to your path.
+
+Proceeding with system's default automake.  Expect trouble.
+*****************************************************************************************
+
+
+);
+} else { 
+   $ENV{ACLOCAL} = "$aclocal_base-$version";
+   $ENV{AUTOMAKE} = "$automake_base-$version";
+}
+
+my $rmNEWS = 1;
+my $rmChangeLog = 1;
+if(-f "NEWS") { $rmNEWS = 0; } else { system("touch NEWS"); }
+if(-f "ChangeLog") { $rmChangeLog = 0; }  else { system("touch ChangeLog"); }
+
+
+
+system("rm -f configure.in");
+system("ln -s configure.in.automake configure.in");
+
+system ("autoreconf -i", @ARGV);
+
+if($rmNEWS) { system("rm NEWS"); }
+if($rmChangeLog) { system("rm ChangeLog"); }
+
+
