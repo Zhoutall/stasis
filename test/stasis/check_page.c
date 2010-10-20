@@ -48,7 +48,6 @@ terms specified in this license.
 
 #include <stasis/page.h>
 #include <stasis/page/slotted.h>
-#include <stasis/page/latchFree/lfSlotted.h>
 #include <stasis/blobManager.h>
 #include <stasis/bufferManager.h>
 #include <stasis/transactional.h>
@@ -153,78 +152,6 @@ static void* fixed_worker_thread(void * arg_ptr) {
   return NULL;
 }
 
-typedef struct {
-  Page ** pages;
-  int num_pages;
-  int my_page;
-} latchFree_worker_thread_args;
-
-static void* latchFree_worker_thread(void * arg_ptr) {
-  latchFree_worker_thread_args * arg = arg_ptr;
-
-  int alloced_count = 0;
-  while(1) {
-    int off = myrandom(arg->num_pages);
-    Page * p = arg->pages[off];
-    if(off == arg->my_page) {
-      recordid rid = stasis_record_alloc_begin(-1, p, sizeof(char));
-      if(rid.size == INVALID_SLOT) {
-        assert(alloced_count > 200);
-        return 0;
-      } else {
-        stasis_record_alloc_done(-1, p, rid);
-        alloced_count++;
-        assert(alloced_count < PAGE_SIZE/2);
-        unsigned char c = (unsigned char)rid.slot;
-        stasis_record_write(-1, p, rid, &c);
-      }
-    } else if(*stasis_page_slotted_numslots_cptr(p)) { // if the page is empty, try another.
-      // read a random record
-      int slot = myrandom(stasis_record_last(-1, p).slot+1);
-      recordid rid;
-      rid.page = p->id;
-      rid.slot = slot;
-      rid.size = sizeof(char);
-      assert(stasis_record_type_read(-1, p, rid) == NORMAL_SLOT);
-      assert(stasis_record_length_read(-1, p, rid) == sizeof(char));
-      unsigned char c = 0;
-      stasis_record_read(-1, p, rid, &c);
-      assert(c == (unsigned char) rid.slot);
-    }
-  }
-}
-START_TEST(latchFreeThreadTest) {
-  Tinit();
-  int NUM_THREADS = 200;
-  Page ** pages = malloc(sizeof(Page*)*NUM_THREADS);
-  int xid = Tbegin();
-
-  pageid_t region = TregionAlloc(xid, NUM_THREADS, -1);
-
-  for(int i = 0; i < NUM_THREADS; i++) {
-    pages[i] = loadPage(xid, i+region);
-    stasis_page_slotted_latch_free_initialize_page(pages[i]);
-  }
-
-  pthread_t * threads = malloc(sizeof(pthread_t) * NUM_THREADS);
-
-  for(int i = 0; i < NUM_THREADS; i++) {
-    latchFree_worker_thread_args * arg = malloc(sizeof(*arg));
-    arg->pages = pages;
-    arg->my_page = i;
-    arg->num_pages = NUM_THREADS;
-    pthread_create(&threads[i], 0, &latchFree_worker_thread, arg);
-  }
-  for(int i = 0; i < NUM_THREADS; i++) {
-    pthread_join(threads[i],0);
-  }
-  for(int i = 0; i < NUM_THREADS; i++) {
-    releasePage(pages[i]);
-  }
-  Tcommit(xid);
-  Tdeinit();
-
-} END_TEST
 static void* worker_thread(void * arg_ptr) {
   Page * p = (Page*)arg_ptr;
   int i;
@@ -386,12 +313,9 @@ static void assertRecordCountSizeType(int xid, Page *p, int count, int size, int
 static void checkPageIterators(int xid, Page *p,int record_count) {
   recordid first = stasis_record_alloc_begin(xid, p, sizeof(int64_t));
   stasis_record_alloc_done(xid,p,first);
-  int64_t i = 0;
-  stasis_record_write(xid,p,first,(byte*)&i);
-  for(i = 1; i < record_count; i++) {
-    recordid rid = stasis_record_alloc_begin(xid,p,sizeof(int64_t));
-    stasis_record_alloc_done(xid,p,rid);
-    stasis_record_write(xid,p,rid,(byte*)&i);
+
+  for(int i = 1; i < record_count; i++) {
+    stasis_record_alloc_done(xid,p,stasis_record_alloc_begin(xid,p,sizeof(int64_t)));
   }
 
   assertRecordCountSizeType(xid, p, record_count, sizeof(int64_t), NORMAL_SLOT);
@@ -417,26 +341,24 @@ START_TEST(pageRecordSizeTypeIteratorTest) {
   pageid_t pid = TpageAlloc(xid);
 
   Page * p = loadPage(xid,pid);
-
+  writelock(p->rwlatch,0);
   memset(p->memAddr, 0, PAGE_SIZE);
   stasis_page_slotted_initialize_page(p);
 
   checkPageIterators(xid,p,10);
 
+  unlock(p->rwlatch);
+
   pid = TpageAlloc(xid);
   releasePage(p);
   p = loadPage(xid,pid);
-
+  writelock(p->rwlatch,0);
   memset(p->memAddr, 0, PAGE_SIZE);
   stasis_fixed_initialize_page(p,sizeof(int64_t),0);
 
   checkPageIterators(xid,p,10);
 
-  memset(p->memAddr, 0, PAGE_SIZE);
-  stasis_page_slotted_latch_free_initialize_page(p);
-
-  checkPageIterators(xid,p,10);
-
+  unlock(p->rwlatch);
   releasePage(p);
 
   Tcommit(xid);
@@ -463,8 +385,9 @@ START_TEST(pageNoThreadMultPageTest)
   p->LSN = 0;
   *stasis_page_lsn_ptr(p) = p->LSN;
 
+  writelock(p->rwlatch,0);
   stasis_page_slotted_initialize_page(p);
-
+  unlock(p->rwlatch);
   multiple_simultaneous_pages(p);
   // Normally, you would call pageWriteLSN() to update the LSN.  This
   // is a hack, since Tdeinit() will crash if it detects page updates
@@ -501,8 +424,10 @@ START_TEST(pageThreadTest) {
   fail_unless(1, NULL);
 
   Page * p = loadPage(-1, 2);
+  writelock(p->rwlatch,0);
   memset(p->memAddr, 0, PAGE_SIZE);
   stasis_page_slotted_initialize_page(p);
+  unlock(p->rwlatch);
   p->LSN = 0;
   *stasis_page_lsn_ptr(p) = p->LSN;
 
@@ -540,8 +465,10 @@ START_TEST(fixedPageThreadTest) {
   pthread_mutex_init(&lsn_mutex, NULL);
   Tinit();
   Page * p = loadPage(-1, 2);
+  writelock(p->rwlatch,0);
   memset(p->memAddr, 0, PAGE_SIZE);
   stasis_fixed_initialize_page(p, sizeof(int), 0);
+  unlock(p->rwlatch);
   p->LSN = 0;
   *stasis_page_lsn_ptr(p) = p->LSN;
 
@@ -572,14 +499,19 @@ START_TEST(pageCheckSlotTypeTest) {
 	recordid blob      = Talloc(xid, PAGE_SIZE * 2);
 
 	Page * p = loadPage(-1, slot.page);
+        readlock(p->rwlatch, 0);
         assert(stasis_record_type_read(xid, p, slot) == NORMAL_SLOT);
         assert(stasis_record_length_read(xid, p, slot) == sizeof(int));
+        unlock(p->rwlatch);
 	releasePage(p);
 
 	/** @todo the use of the fixedRoot recordid to check getRecordType is
 		  a bit questionable, but should work. */
 	p = loadPage(-1, fixedRoot.page);
+
+    readlock(p->rwlatch, 0);
 	assert(stasis_record_type_read(xid, p, fixedRoot) == NORMAL_SLOT);
+	unlock(p->rwlatch);
 	releasePage(p);
 
 	fixedRoot.slot = 1;
@@ -587,7 +519,9 @@ START_TEST(pageCheckSlotTypeTest) {
     assert(TrecordType(xid, fixedRoot) == NORMAL_SLOT);
 
 	p = loadPage(-1, blob.page);
+        readlock(p->rwlatch, 0);
  	int type = stasis_record_type_read(xid, p, blob);
+        unlock(p->rwlatch);
         assert(type == BLOB_SLOT);
 	releasePage(p);
 
@@ -597,6 +531,7 @@ START_TEST(pageCheckSlotTypeTest) {
 	bad.size = 4;
 
 	p = loadPage(xid, bad.page);
+        readlock(p->rwlatch, 0);
 	assert(stasis_record_type_read(xid, p, bad) == INVALID_SLOT);
 	bad.size = 100000;
 	assert(stasis_record_type_read(xid, p, bad) == INVALID_SLOT);
@@ -605,6 +540,7 @@ START_TEST(pageCheckSlotTypeTest) {
 	assert(stasis_record_type_read(xid, p, bad) == NORMAL_SLOT);
 	p->LSN = 0;
 	*stasis_page_lsn_ptr(p) = p->LSN;
+        unlock(p->rwlatch);
 	releasePage(p);
 
 	Tcommit(xid);
@@ -660,6 +596,8 @@ START_TEST(pageTreeOpTest) {
   // run a sanity check on a page pinned in ram; don't bother logging (since we don't care about recovery for this test)
   Page *p = loadPage(xid, page);
 
+  writelock(p->rwlatch, 0);
+
   stasis_page_slotted_initialize_page(p);
 
   recordid rids[5];
@@ -704,6 +642,8 @@ START_TEST(pageTreeOpTest) {
     stasis_record_read(xid, p, rids[i], (byte*)(&j));
     assert(i == j);
   }
+  // (tdeinit till fsck it at shutdown)
+  unlock(p->rwlatch);
 
   releasePage(p);
 
@@ -728,7 +668,6 @@ Suite * check_suite(void) {
   tcase_add_test(tc, pageNoThreadTest);
   tcase_add_test(tc, pageThreadTest);
   tcase_add_test(tc, fixedPageThreadTest);
-  tcase_add_test(tc, latchFreeThreadTest);
 
   /* --------------------------------------------- */
 

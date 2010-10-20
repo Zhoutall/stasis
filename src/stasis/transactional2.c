@@ -138,12 +138,14 @@ int Tbegin() {
   }
 }
 
-void TupdateWithPage(int xid, pageid_t page, Page *p, const void * dat, size_t datlen, int op) {
+void Tupdate(int xid, pageid_t page,
+					       const void * dat, size_t datlen, int op) {
   assert(stasis_initted);
   assert(page != INVALID_PAGE);
   LogEntry * e;
   stasis_transaction_table_entry_t * xact = stasis_transaction_table_get(stasis_transaction_table, xid);
   assert(xact);
+  Page * p = loadPageForOperation(xid, page, op, 0);
 
   if(globalLockManager.writeLockPage && p) {
     globalLockManager.writeLockPage(xid, page);
@@ -176,11 +178,6 @@ void TupdateWithPage(int xid, pageid_t page, Page *p, const void * dat, size_t d
   }
 
   if(p) unlock(p->rwlatch);
-}
-
-void Tupdate(int xid, pageid_t page, const void * dat, size_t datlen, int op) {
-  Page * p = loadPageForOperation(xid, page, op, 0);
-  TupdateWithPage(xid, page, p, dat, datlen, op);
   if(p) releasePage(p);
 }
 
@@ -252,7 +249,12 @@ void TreadStr(int xid, recordid rid, char * dat) {
   Tread(xid, rid, dat);
 }
 
-Page * TreadWithPage(int xid, recordid rid, Page *p, void * dat) {
+compensated_function void Tread(int xid, recordid rid, void * dat) {
+  Page * p;
+  try {
+    p = loadPage(xid, rid.page);
+  } end;
+
   readlock(p->rwlatch,0);
 
   rid = stasis_record_dereference(xid, p, rid);
@@ -271,16 +273,7 @@ Page * TreadWithPage(int xid, recordid rid, Page *p, void * dat) {
     stasis_record_read(xid, p, rid, dat);
   }
   unlock(p->rwlatch);
-  return p;
-}
-
-compensated_function void Tread(int xid, recordid rid, void * dat) {
-  Page * p;
-  try {
-    p = loadPage(xid, rid.page);
-  } end;
-
-  releasePage( TreadWithPage(xid, rid, p, dat) );
+  releasePage(p);
 }
 
 compensated_function void TreadRaw(int xid, recordid rid, void * dat) {

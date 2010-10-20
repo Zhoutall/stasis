@@ -70,7 +70,8 @@ static inline int needFlush(stasis_buffer_manager_t * bm) {
 
 static int chWriteBackPage_helper(stasis_buffer_manager_t* bm, pageid_t pageid, int is_hint) {
   stasis_buffer_concurrent_hash_t *ch = bm->impl;
-  Page * p = hashtable_lookup(ch->ht, pageid/*, &h*/);
+  hashtable_bucket_handle_t h;
+  Page * p = hashtable_lookup_lock(ch->ht, pageid, &h);
   int ret = 0;
   if(!p) {
     ret = ENOENT;
@@ -79,56 +80,19 @@ static int chWriteBackPage_helper(stasis_buffer_manager_t* bm, pageid_t pageid, 
       if(!trywritelock(p->loadlatch,0)) {
         ret = EBUSY;
         p->needsFlush = 1; // Not atomic.  Oh well.
-        if(p->id != pageid) {
-          fprintf(stderr, "BUG FIX: %s:%d would have corrupted a latch's state, but did not\n", __FILE__, __LINE__);
-        }
-      } else {
-        if(p->id != pageid) {  // it must have been written back...
-          unlock(p->loadlatch);
-          return 0;
-        }
       }
     } else {
       // Uggh.  With the current design, it's possible that the trywritelock will block on the writeback thread.
       // That leaves us with few options, so we expose two sets of semantics up to the caller.
 
-      // This used to call writelock while holding a hashtable bucket lock, risking deadlock if called when the page was pinned.
-
-      // We could assume that the caller knows what it's doing, and writeback regardless of whether the page is
-      // pinned.  This could allow torn pages to reach disk, and would risk calling page compaction, etc while the
-      // page is concurrently read.  However, it would prevent us from blocking on application pins.  Unfortunately,
-      // compacting under during application reads is a deal breaker.
-
-      // Instead, we release the hashtable lock, get the write latch, then double check the pageid.
-      // This is safe, since we know that page pointers are never freed, only reused.  However, it causes writeback
-      // to block waiting for application threads to unpin their pages.
+      // Since this isn't a hint, the page is not pinned.  Therefore, the following will only deadlock if the caller is buggy.
       writelock(p->loadlatch,0);
-      if(p->id != pageid) {
-        // someone else wrote it back.  woohoo.
-        unlock(p->loadlatch);
-        return 0;
-      }
     }
   }
+  hashtable_unlock(&h);
   if(ret) { return ret; }
-
-  // When we optimize for sequential writes, we try to make sure that
-  // write back only happens in a single thread.  Therefore, there is
-  // no reason to put dirty pages in the LRU, and lruFast will ignore
-  // dirty pages that are inserted into it.  Since we may be making a dirty
-  // page become clean here, we remove the page from LRU, and put it
-  // back in.  (There is no need to do this if the sequential
-  // optimizations are turned off...)
-  if(stasis_buffer_manager_hint_writes_are_sequential)
-    ch->lru->remove(ch->lru, p);
-
   // write calls stasis_page_flushed(p);
   ch->page_handle->write(ch->page_handle, p);
-
-  // Put the page back in LRU iff we just took it out.
-  if(stasis_buffer_manager_hint_writes_are_sequential)
-    ch->lru->insert(ch->lru, p);
-
   p->needsFlush = 0;
   unlock(p->loadlatch);
   return 0;
@@ -183,7 +147,7 @@ static void deinitTLS(void *tlsp) {
   stasis_buffer_concurrent_hash_t *ch = tls->bm->impl;
 
   Page * p = tls->p;
-  p->id = -2;
+  p->id = -1;
   while(hashtable_test_and_set(ch->ht,p->id, p)) {
     p->id --;
   }
@@ -200,30 +164,7 @@ static inline stasis_buffer_concurrent_hash_tls_t * populateTLS(stasis_buffer_ma
   }
   int count = 0;
   while(tls->p == NULL) {
-    Page * tmp;
-    int spin_count = 0;
-    while(!(tmp = ch->lru->getStaleAndRemove(ch->lru))) {
-      spin_count++;
-      if(needFlush(bm)) {
-        // exponential backoff -- don't test exponential backoff flag
-        // here.  LRU should only return null if we're in big trouble,
-        // or if the flag is set to true.
-
-        // wake writeback thread
-        pthread_cond_signal(&ch->needFree);
-
-        // sleep
-        struct timespec ts = { 0, (1024 * 1024) << (spin_count > 3 ? 3 : spin_count) };
-        nanosleep(&ts, 0);
-        if(spin_count > 9) {
-          static int warned = 0;
-          if(!warned) {
-            fprintf(stderr, "Warning: lots of spinning attempting to get page from LRU\n");
-            warned = 1;
-          }
-        }
-      }
-    }
+    Page * tmp = ch->lru->getStaleAndRemove(ch->lru);
     hashtable_bucket_handle_t h;
     tls->p = hashtable_remove_begin(ch->ht, tmp->id, &h);
     if(tls->p) {
@@ -232,25 +173,11 @@ static inline stasis_buffer_concurrent_hash_tls_t * populateTLS(stasis_buffer_ma
       int succ =
       trywritelock(tls->p->loadlatch,0);  // if this blocks, it is because someone else has pinned the page (it can't be due to eviction because the lru is atomic)
 
-      if(succ && (
-          // Work-stealing heuristic: If we don't know that writes are sequential, then write back the page we just encountered.
-          (!stasis_buffer_manager_hint_writes_are_sequential)
-          // Otherwise, if writes are sequential, then we never want to steal work from the writeback thread,
-          // so, pass over pages that are dirty.
-          || (!tls->p->dirty)
-        )) {
+      if(succ) {
         // The getStaleAndRemove was not atomic with the hashtable remove, which is OK (but we can't trust tmp anymore...)
-        if(tmp != tls->p) {
-          int copy_count = hashtable_debug_number_of_key_copies(ch->ht, tmp->id);
-          assert(copy_count == 1);
-          assert(tmp == tls->p);
-          abort();
-        }
-        // note that we'd like to assert that the page is unpinned here.  However, we can't simply look at p->queue, since another thread could be inside the "spooky" quote below.
+        assert(tmp == tls->p);
         tmp = 0;
         if(tls->p->id >= 0) {
-	  // Page is not in LRU, so we don't have to worry about the case where we 
-	  // are in sequential mode, and have to remove/add the page from/to the LRU.
           ch->page_handle->write(ch->page_handle, tls->p);
         }
         hashtable_remove_finish(ch->ht, &h);  // need to hold bucket lock until page is flushed.  Otherwise, another thread could read stale data from the filehandle.
@@ -259,23 +186,11 @@ static inline stasis_buffer_concurrent_hash_tls_t * populateTLS(stasis_buffer_ma
         unlock(tls->p->loadlatch);
         break;
       } else {
-        if(succ) {
-          assert(tmp == tls->p);
-          // can only reach this if writes are sequential, and the page is dirty.
-          unlock(tls->p->loadlatch);
-        }
         // put back in LRU before making it accessible (again) via the hash.
         // otherwise, someone could try to pin it.
         ch->lru->insert(ch->lru, tmp);  // OK because lru now does refcounting, and we know that tmp->id can't change (because we're the ones that got it from LRU)
         hashtable_remove_cancel(ch->ht, &h);
         tls->p = NULL; // This iteration of the loop failed, set this so the loop runs again.
-        if(succ) {
-          // writes are sequential, p is dirty, and there is a big backlog.  Go to sleep for 1 msec to let things calm down.
-          if(count > 10) {
-            struct timespec ts = { 0, 1000000 };
-            nanosleep(&ts, 0);
-          }
-        }
       }
     } else {
       // page is not in hashtable, but it is in LRU.  getStale and hashtable remove are not atomic.
@@ -293,13 +208,11 @@ static inline stasis_buffer_concurrent_hash_tls_t * populateTLS(stasis_buffer_ma
 
 static void chReleasePage(stasis_buffer_manager_t * bm, Page * p);
 
-static Page * chLoadPageImpl_helper(stasis_buffer_manager_t* bm, int xid, stasis_page_handle_t *ph, const pageid_t pageid, int uninitialized, pagetype_t type) {
+static Page * chLoadPageImpl_helper(stasis_buffer_manager_t* bm, int xid, const pageid_t pageid, int uninitialized, pagetype_t type) {
   stasis_buffer_concurrent_hash_t *ch = bm->impl;
   stasis_buffer_concurrent_hash_tls_t *tls = populateTLS(bm);
   hashtable_bucket_handle_t h;
   Page * p = 0;
-
-  ph = ph ? ph : ch->page_handle;
 
   do {
     if(p) { // the last time around pinned the wrong page!
@@ -334,7 +247,7 @@ static Page * chLoadPageImpl_helper(stasis_buffer_manager_t* bm, int xid, stasis
         type = UNINITIALIZED_PAGE;
         stasis_page_loaded(p, UNINITIALIZED_PAGE);
       } else {
-        ph->read(ph, p, type);
+        ch->page_handle->read(ch->page_handle, p, type);
       }
       unlock(p->loadlatch);
 
@@ -352,10 +265,10 @@ static Page * chLoadPageImpl_helper(stasis_buffer_manager_t* bm, int xid, stasis
   return p;
 }
 static Page * chLoadPageImpl(stasis_buffer_manager_t *bm, stasis_buffer_manager_handle_t *h, int xid, const pageid_t pageid, pagetype_t type) {
-  return chLoadPageImpl_helper(bm, xid, (stasis_page_handle_t*)h, pageid, 0, type);
+  return chLoadPageImpl_helper(bm, xid, pageid, 0, type);
 }
 static Page * chLoadUninitPageImpl(stasis_buffer_manager_t *bm, int xid, const pageid_t pageid) {
-  return chLoadPageImpl_helper(bm, xid, 0, pageid,1,UNKNOWN_TYPE_PAGE); // 1 means dont care about preimage of page.
+  return chLoadPageImpl_helper(bm, xid,pageid,1,UNKNOWN_TYPE_PAGE); // 1 means dont care about preimage of page.
 }
 static void chReleasePage(stasis_buffer_manager_t * bm, Page * p) {
   stasis_buffer_concurrent_hash_t * ch = bm->impl;
@@ -399,12 +312,11 @@ static void chBufDeinit(stasis_buffer_manager_t * bm) {
   chBufDeinitHelper(bm, 0);
 }
 static stasis_buffer_manager_handle_t * chOpenHandle(stasis_buffer_manager_t *bm, int is_sequential) {
-  stasis_buffer_concurrent_hash_t * bh = bm->impl;
-  return (stasis_buffer_manager_handle_t*)bh->page_handle->dup(bh->page_handle, is_sequential);
+  // no-op
+  return (void*)1;
 }
 static int chCloseHandle(stasis_buffer_manager_t *bm, stasis_buffer_manager_handle_t* h) {
-  ((stasis_page_handle_t*)h)->close((stasis_page_handle_t*)h);
-  return 0;
+  return 0; // no error
 }
 
 stasis_buffer_manager_t* stasis_buffer_manager_concurrent_hash_open(stasis_page_handle_t * h, stasis_log_t * log, stasis_dirty_page_table_t * dpt) {
@@ -449,7 +361,7 @@ stasis_buffer_manager_t* stasis_buffer_manager_concurrent_hash_open(stasis_page_
 
   for(pageid_t i = 0; i < stasis_buffer_manager_size; i++) {
     Page *p = stasis_buffer_pool_malloc_page(ch->buffer_pool);
-    stasis_buffer_pool_free_page(ch->buffer_pool, p,(-1*i)-2);
+    stasis_buffer_pool_free_page(ch->buffer_pool, p,-1*i);
     pageSetNode(p,0,0);
     (*pagePinCountPtr(p)) = 1;
     ch->lru->insert(ch->lru, p);  // decrements pin count ptr (setting it to zero)

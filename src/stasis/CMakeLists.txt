@@ -24,7 +24,6 @@ ADD_LIBRARY(stasis crc32.c redblack.c tsearchcompat.c lhtable.c concurrentHash.c
                    page/raw.c
                    page/lsnFree.c
                    page/segment.c
-                   page/latchFree/lfSlotted.c
                    compensations.c
                    operations/pageOperations.c
                    operations/decrement.c operations/increment.c
@@ -46,7 +45,6 @@ ADD_LIBRARY(stasis crc32.c redblack.c tsearchcompat.c lhtable.c concurrentHash.c
                    bufferManager/pageArray.c
                    bufferManager/bufferHash.c replacementPolicy/lru.c
                    replacementPolicy/lruFast.c replacementPolicy/threadsafeWrapper.c replacementPolicy/concurrentWrapper.c
-                   util/log2.c util/histogram.c util//hashFunctions.c
                    stlredblack.cpp)
 
 INSTALL(TARGETS stasis LIBRARY DESTINATION lib)

@@ -27,17 +27,6 @@ pageid_t stasis_buffer_manager_size = 20029; // ~ 82MB
 #endif // MAX_BUFFER_SIZE
 #endif // STASIS_BUFFER_MANAGER_SIZE
 
-#ifdef STASIS_BUFFER_MANAGER_HINT_WRITES_ARE_SEQUENTIAL
-int stasis_buffer_manager_hint_writes_are_sequential = STASIS_BUFFER_MANAGER_HINT_WRITES_ARE_SEQUENTIAL;
-#else
-int stasis_buffer_manager_hint_writes_are_sequential = 0;
-#endif
-
-#ifdef STASIS_BUFFER_MANAGER_DEBUG_STRESS_LATCHING
-int stasis_buffer_manager_debug_stress_latching = STASIS_BUFFER_MANAGER_DEBUG_STRESS_LATCHING;
-#else
-int stasis_buffer_manager_debug_stress_latching = 0;
-#endif
 
 #ifdef BUFFER_MANAGER_O_DIRECT
 int bufferManagerO_DIRECT = BUFFER_MANAGER_O_DIRECT;
@@ -45,20 +34,8 @@ int bufferManagerO_DIRECT = BUFFER_MANAGER_O_DIRECT;
 int bufferManagerO_DIRECT = 0;
 #endif
 
-#ifdef STASIS_REPLACEMENT_POLICY_CONCURRENT_WRAPPER_EXPONENTIAL_BACKOFF
-int stasis_replacement_policy_concurrent_wrapper_exponential_backoff = STASIS_REPLACEMENT_POLICY_CONCURRENT_WRAPPER_EXPONENTIAL_BACKOFF;
-#else
-int stasis_replacement_policy_concurrent_wrapper_exponential_backoff = 0;
-#endif
-
-#ifdef STASIS_REPLACEMENT_POLICY_CONCURRENT_WRAPPER_POWER_OF_TWO_BUCKETS
-int stasis_replacement_policy_concurrent_wrapper_power_of_two_buckets = STASIS_REPLACEMENT_POLICY_CONCURRENT_WRAPPER_POWER_OF_TWO_BUCKETS;
-#else
-int stasis_replacement_policy_concurrent_wrapper_power_of_two_buckets = 0;
-#endif
-
 #ifdef BUFFER_MANAGER_FILE_HANDLE_TYPE
-int bufferManagerFileHandleType = BUFFER_MANAGER_FILE_HANDLE_TYPE;
+int bufferManagerFileHandleType = BUFFER_MANAGER_FILE_HANDLE_TYPE
 #else
 int bufferManagerFileHandleType = BUFFER_MANAGER_FILE_HANDLE_PFILE;
 #endif

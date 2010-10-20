@@ -228,7 +228,7 @@ static Page * bhLoadPageImpl_helper(stasis_buffer_manager_t* bm, stasis_buffer_m
                                     int xid, const pageid_t pageid, int uninitialized, pagetype_t type) {
   stasis_buffer_hash_t * bh = bm->impl;
 
-  DEBUG("loadPage(%lld) (uninitialized = %d)\n", pageid, uninitialized);
+  DEBUG("load %lld (%d)\n", pageid, uninitialized);
 
   // Note:  Calls to loadlatch in this function violate lock order, but
   // should be safe, since we make sure no one can have a writelock
@@ -308,9 +308,7 @@ static Page * bhLoadPageImpl_helper(stasis_buffer_manager_t* bm, stasis_buffer_m
     // try to read this page from disk.
     pthread_mutex_unlock(&bh->mut);
 
-    stasis_page_handle_t * h = bh->page_handle; // handle ? (stasis_page_handle_t*)handle : bh->page_handle;
-
-    h->read(h, ret, type);
+    bh->page_handle->read(bh->page_handle, ret, type);
 
     pthread_mutex_lock(&bh->mut);
 
@@ -405,7 +403,6 @@ void bhPrefetchPagesImpl(stasis_buffer_manager_t *bm, pageid_t pageid, pageid_t 
 }
 
 static void bhReleasePage(stasis_buffer_manager_t * bm, Page * p) {
-  DEBUG("releasePage(%lld) (rwlatch = %llx)\n", p->id, (long long)p->rwlatch);
   stasis_buffer_hash_t * bh = bm->impl;
   pthread_mutex_lock(&bh->mut);
   checkPageState(p);

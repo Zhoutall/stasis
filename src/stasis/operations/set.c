@@ -90,20 +90,16 @@ typedef struct {
   slotid_t slot;
 } set_range_t;
 
-Page * TsetWithPage(int xid, recordid rid, Page *p, const void * dat) {
+int Tset(int xid, recordid rid, const void * dat) {
+  Page * p = loadPage(xid, rid.page);
   readlock(p->rwlatch,0);
   rid = stasis_record_dereference(xid,p,rid);
-  if(rid.page != p->id) {
-    unlock(p->rwlatch);
-    releasePage(p);
-    p = loadPage(xid, rid.page);
-    readlock(p->rwlatch,0);
-  }
   short type = stasis_record_type_read(xid,p,rid);
 
   if(type == BLOB_SLOT) {
     stasis_blob_write(xid,p,rid,dat);
     unlock(p->rwlatch);
+    releasePage(p);
   } else {
     rid.size = stasis_record_type_to_size(rid.size);
     if(rid.page == p->id) {
@@ -111,6 +107,7 @@ Page * TsetWithPage(int xid, recordid rid, Page *p, const void * dat) {
       assert(rid.size == stasis_record_length_read(xid, p, rid));
     }
     unlock(p->rwlatch);
+    releasePage(p);
 
     size_t sz = sizeof(slotid_t) + sizeof(int64_t) + 2 * rid.size;
     byte * const buf = malloc(sz);
@@ -120,17 +117,11 @@ Page * TsetWithPage(int xid, recordid rid, Page *p, const void * dat) {
     *(int64_t*)  b = rid.size;    b += sizeof(int64_t);
     memcpy(b, dat, rid.size);
     b += rid.size;
-    TreadWithPage(xid, rid, p, b);
+    Tread(xid, rid, b);
 
-    TupdateWithPage(xid,rid.page,p,buf,sz,OPERATION_SET);
+    Tupdate(xid,rid.page,buf,sz,OPERATION_SET);
     free(buf);
   }
-  return p;
-}
-
-int Tset(int xid, recordid rid, const void * dat) {
-  Page * p = loadPage(xid, rid.page);
-  releasePage( TsetWithPage(xid, rid, p, dat) );
   return 0;
 }
 

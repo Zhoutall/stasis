@@ -36,6 +36,8 @@
  */
 static inline void slottedFsck(const Page const * page) {
 
+  assertlocked(page->rwlatch);
+
   Page dummy;
 
   dummy.id = -1;
@@ -50,8 +52,7 @@ static inline void slottedFsck(const Page const * page) {
   assert(slotListStart < PAGE_SIZE && slotListStart >= 0);
   assert(page_type == SLOTTED_PAGE ||
          page_type == BOUNDARY_TAG_PAGE ||
-         page_type == SLOTTED_LSN_FREE_PAGE ||
-         page_type == SLOTTED_LATCH_FREE_PAGE);
+         page_type == SLOTTED_LSN_FREE_PAGE);
   assert(numslots >= 0);
   assert(numslots * SLOTTED_PAGE_OVERHEAD_PER_RECORD < PAGE_SIZE);
   assert(freespace >= 0);
@@ -145,11 +146,15 @@ static inline void slottedFsck(const Page const * page) {
 }
 
 /**
+
 Move all of the records to the beginning of the page in order to
 increase the available free space.
+
+The caller of this function must have a writelock on the page.
 */
 
 static void slottedCompact(Page * page) {
+  assertlocked(page->rwlatch);
   Page bufPage;
   byte buffer[PAGE_SIZE];
   bufPage.memAddr = buffer;
@@ -229,6 +234,7 @@ static void slottedCompactSlotIDs(int xid, Page * p) {
    of a subsequent call to really_do_ralloc().
 */
 static size_t slottedFreespaceForSlot(Page * page, int slot) {
+  assertlocked(page->rwlatch);
   size_t slotOverhead;
 
   if(slot == INVALID_SLOT) {
@@ -575,6 +581,7 @@ void stasis_page_slotted_deinit() {
 }
 
 void stasis_page_slotted_initialize_page(Page * page) {
+  assertlocked(page->rwlatch);
   stasis_page_cleanup(page);
   page->pageType = SLOTTED_PAGE;
   *stasis_page_slotted_freespace_ptr(page) = 0;

@@ -20,23 +20,6 @@ extern stasis_buffer_manager_t* (*stasis_buffer_manager_factory)(stasis_log_t*, 
 
 extern pageid_t stasis_buffer_manager_size;
 /**
-   If this is true, then the only thread that will perform writeback is the
-   buffer manager writeback thread.  It turns out that splitting sequential
-   writes across many threads leads to a 90-95% reduction in write throughput.
-
-   Otherwise (the default) application threads will help write back dirty pages
-   so that we can get good concurrency on our writes.
- */
-extern int stasis_buffer_manager_hint_writes_are_sequential;
-/**
-   If this is true, then disable some optimizations associated with sequential
-   write mode.  This will needlessly burn CPU by inserting dirty pages into
-   the LRU.  In sequential write mode, these dirty pages will cause populateTLS
-   to loop excessively, excercising all sorts of extremely rare thread
-   synchronization schedules.
- */
-extern int stasis_buffer_manager_debug_stress_latching;
-/**
    This determines which type of file handle the buffer manager will use.
 
    It defaults to BUFFER_MANAGER_FILE_HANDLE_NON_BLOCKING for a
@@ -60,24 +43,6 @@ extern int bufferManagerNonBlockingSlowHandleType;
    defining BUFFER_MANAGER_O_DIRECT.
 */
 extern int bufferManagerO_DIRECT;
-/**
-   If true, then concurrent LRU will use exponential backoff when it
-   has trouble finding a page to evict.  If false, it will perform a
-   busy wait.
-
-   This definitely should be set to true when
-   stasis_buffer_manager_hint_sequential_writes is true.  Otherwise
-   the only way that page writeback will be able to apply backpressure
-   to application threads will be to cause busy waits in concurrent
-   LRU.
- */
-extern int stasis_replacement_policy_concurrent_wrapper_exponential_backoff;
-/**
-   If true, then concurrent LRU will round the number of buckets up to
-   the next power of two, and use bit masks instead of mod when
-   assigning pages to buckets.
- */
-extern int stasis_replacement_policy_concurrent_wrapper_power_of_two_buckets;
 /**
    If true, Stasis will suppress warnings regarding unclean shutdowns.
    This is use to prevent spurious warnings during unit testing, and
