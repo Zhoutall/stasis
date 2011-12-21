@@ -1,0 +1,61 @@
+INC += -I . -I config/linux
+LIB += -lm -lpthread
+CPPFLAGS += $(INC)
+CXXFLAGS += -O0 -g -Wall -Wextra -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS)
+CFLAGS += -std=gnu99 $(CXXFLAGS) $(CPPFLAGS)
+
+all: bin/lib$(LIBNAME).so						\
+     bin/lib$(LIBNAME).a						\
+     $(addprefix bin/, $(addsuffix .static, $(basename $(MAINSRC))))	\
+     print_cxx_params print_cc_params
+
+bin/%.o : %.c
+	@echo CC   $<
+	@mkdir -p $(dir $@)
+	@         $(CC) -c $(CFLAGS) -o $@ $<
+print_cc_params:
+	@echo CC: $(CC) -c $(CFLAGS) -o %.o %.c
+
+bin/%.o : %.cpp 
+	@echo C++  $<
+	@mkdir -p $(dir $@)
+	@          $(CXX) -c $(CXXFLAGS) -o $@ $<
+print_cxx_params:
+	@echo C++: $(CXX) -c $(CXXFLAGS) -o %.o %.cpp
+
+bin/%.d: %.c
+	@mkdir -p $(dir $@)
+	@$(CC) -M $(CFLAGS) $< | perl -ne 's~^.+:~$@ $(basename $@).o :~;print;' > $@
+
+bin/%.d: %.cpp
+	@mkdir -p $(dir $@)
+	@$(CC) -M $(CXXFLAGS) $< | perl -ne 's~^.+:~$@ $(basename $@).o :~;print;' > $@
+
+bin/%.d: %.cc
+	@mkdir -p $(dir $@)
+	@$(CC) -M $(CXXFLAGS) $< | perl -ne 's~^.+:~$@ $(basename $@).o :~;print;' > $@
+
+bin/lib$(LIBNAME).so: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
+	@echo LINK $@
+	@g++ $(LIB) $(CXXFLAGS) -shared -o $@ $^
+
+bin/lib$(LIBNAME).a: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
+	@echo AR   $@
+	@ar rcs $@ $^
+
+bin/%.static: %.cpp bin/lib$(LIBNAME).a
+	@echo STATIC_EXE $@
+	@mkdir -p $(dir $@)
+	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ $(STATIC_LIBS)
+
+bin/%.static: %.cc bin/lib$(LIBNAME).a
+	@echo STATIC_EXE $@
+	@mkdir -p $(dir $@)
+	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ -static-libstdc++ $(STATIC_LIBS)
+
+.PHONY: all clean print_cc_params print_cxx_params
+
+clean:
+	rm -rf bin/
+
+-include $(patsubst %.cc,bin/%.d,$(patsubst %.cpp,bin/%.d,$(patsubst %.c,bin/%.d,$(LIBSRC))))
