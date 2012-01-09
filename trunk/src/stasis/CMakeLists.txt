@@ -63,6 +63,7 @@ ADD_LIBRARY(stasis util/crc32.c
                    replacementPolicy/concurrentWrapper.c
                    replacementPolicy/clock.c
 		   )
+IF(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 ADD_LIBRARY(stasis_experimental
   experimental/consumer.c
   experimental/fifo.c
@@ -75,5 +76,6 @@ ADD_LIBRARY(stasis_experimental
   experimental/group.c
   experimental/lsmTree.c
   )
+ENDIF(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 INSTALL(TARGETS stasis LIBRARY DESTINATION lib)

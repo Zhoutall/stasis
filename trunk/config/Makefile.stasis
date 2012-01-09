@@ -1,10 +1,22 @@
+ifeq (`uname`,"Linux")
 INC += -I . -I config/linux
+LIB += -lrt
+else
+INC += -I . -I config/macos
+endif
+
 LIB += -lm -lpthread
+
 CPPFLAGS += $(INC)
-CXXFLAGS += -O3 -g -Wall -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS) -lrt
+CXXFLAGS += -O3 -g -Wall -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS)
 CFLAGS += -std=gnu99 $(CXXFLAGS) $(CPPFLAGS)
 
-all: bin/lib$(LIBNAME).so						\
+CC = gcc-4.2
+CXX = g++-4.2
+
+#bin/lib$(LIBNAME).dylib						\
+
+all: \
      bin/lib$(LIBNAME).a						\
      $(addprefix bin/, $(addsuffix .static, $(basename $(MAINSRC))))	\
      print_cxx_params print_cc_params
@@ -37,7 +49,11 @@ bin/%.d: %.cc
 
 bin/lib$(LIBNAME).so: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
 	@echo LINK $@
-	@g++ $(LIB) $(CXXFLAGS) -shared -o $@ $^
+	@g++ -shared -Wl,-soname,$@ $(LIB) $(CXXFLAGS) -o $@ $^
+
+bin/lib$(LIBNAME).dylib: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
+	@echo LINK $@
+	@g++ -dynamiclib $(LIB) $(CXXFLAGS) -o $@ $^
 
 bin/lib$(LIBNAME).a: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
 	@echo AR   $@
