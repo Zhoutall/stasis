@@ -1,7 +1,7 @@
 INC += -I . -I config/linux
 LIB += -lm -lpthread
 CPPFLAGS += $(INC)
-CXXFLAGS += -O0 -g -Wall -Wextra -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS)
+CXXFLAGS += -O3 -g -Wall -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS) -lrt
 CFLAGS += -std=gnu99 $(CXXFLAGS) $(CPPFLAGS)
 
 all: bin/lib$(LIBNAME).so						\
