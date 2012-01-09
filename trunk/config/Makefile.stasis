@@ -1,8 +1,10 @@
-ifeq (`uname`,"Linux")
+ifeq ($(shell uname), Linux)
 INC += -I . -I config/linux
 LIB += -lrt
 else
 INC += -I . -I config/macos
+CC = gcc-4.2
+CXX = g++-4.2
 endif
 
 LIB += -lm -lpthread
@@ -11,12 +13,11 @@ CPPFLAGS += $(INC)
 CXXFLAGS += -O3 -g -Wall -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS)
 CFLAGS += -std=gnu99 $(CXXFLAGS) $(CPPFLAGS)
 
-CC = gcc-4.2
-CXX = g++-4.2
 
-#bin/lib$(LIBNAME).dylib						\
-
-all: \
+ifeq ($(shell uname), Linux)
+ SO=bin/lib$(LIBNAME).so
+endif
+all: ${SO}								\
      bin/lib$(LIBNAME).a						\
      $(addprefix bin/, $(addsuffix .static, $(basename $(MAINSRC))))	\
      print_cxx_params print_cc_params
