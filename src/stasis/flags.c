@@ -30,7 +30,11 @@ int stasis_buffer_manager_io_handle_flags =
 #ifdef STASIS_BUFFER_MANAGER_IO_HANDLE_FLAGS
   STASIS_BUFFER_MANAGER_IO_HANDLE_FLAGS;
 #else
+#ifdef HAVE_O_NOATIME
   O_NOATIME;
+#else
+  0;
+#endif 
 #endif
 
 int stasis_buffer_manager_preallocate_mode =

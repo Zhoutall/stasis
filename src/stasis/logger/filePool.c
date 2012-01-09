@@ -1,6 +1,7 @@
 #include <config.h>
 #include <stasis/common.h>
 #include <dirent.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -14,7 +15,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -111,7 +111,8 @@ enum file_type stasis_log_file_pool_file_type(const struct dirent* file, lsn_t *
 /**
  * No latching required.  Does not touch shared state.
  */
-int stasis_log_file_pool_file_filter(const struct dirent* file) {
+//int stasis_log_file_pool_file_filter(const struct dirent* file) {
+int stasis_log_file_pool_file_filter(struct dirent* file) {
   lsn_t junk;
   if(UNKNOWN != stasis_log_file_pool_file_type(file, &junk)) {
     return 1;
@@ -600,7 +601,11 @@ void key_destr(void * key) { free(key); }
 /**
  * Does no latching.  No shared state.
  */
-int filesort(const struct dirent ** a, const struct dirent ** b) {
+//int filesort(const struct dirent ** a, const struct dirent ** b) {
+int filesort(const void * ap, const void * bp) {
+  const struct dirent  *const *const a = ap;
+  const struct dirent *const *const b = bp;
+
   int ret = strcmp((*a)->d_name, (*b)->d_name);
   DEBUG("%d = %s <=> %s\n", ret, (*a)->d_name, (*b)->d_name);
   return ret;
@@ -678,9 +683,14 @@ stasis_log_t* stasis_log_file_pool_open(const char* dirname, int filemode, int f
 
   fp->target_chunk_size = 512 * 1024 * 1024;
 
-  fp->filemode = filemode | O_DSYNC;  /// XXX should not hard-code O_SYNC.
+#ifdef HAVE_O_DSYNC
+  int SYNC = O_DSYNC;
+#else
+  int SYNC = O_SYNC;
+#endif
+  fp->filemode = filemode | SYNC;  /// XXX should not hard-code O_SYNC.
   fp->fileperm = fileperm;
-  fp->softcommit = !(filemode & O_DSYNC);
+  fp->softcommit = !(filemode & SYNC);
 
   off_t current_target = 0;
   for(int i = 0; i < n; i++) {

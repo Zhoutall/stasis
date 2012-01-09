@@ -29,13 +29,18 @@ void * worker(void * argp) {
   thread_arg * arg = argp;
 
   void * buf = 0;
-  int err = posix_memalign(&buf, 512, arg->page_size);
+  int err;
+#ifdef HAVE_POSIX_MEMALIGN
+  err = posix_memalign(&buf, 512, arg->page_size);
   if(err) {
     printf("Couldn't allocate memory with posix_memalign: %s\n", strerror(err));
     fflush(stdout);
     abort();
   }
-
+#else
+  buf = malloc(arg->page_size * 2);
+  buf = (void*)((intptr_t)buf & ~(arg->page_size-1));
+#endif
   struct timeval start, stop;
   for(uint64_t i = 0; i <  arg->opcount; i++) {
     gettimeofday(&start, 0);
@@ -52,7 +57,9 @@ void * worker(void * argp) {
     gettimeofday(&stop, 0);
     arg->elapsed += stasis_timeval_to_double(stasis_subtract_timeval(stop, start));
   }
+#ifdef HAVE_POSIX_MEMALIGN
   free(buf);
+#endif
   return 0;
 }
 
@@ -70,8 +77,12 @@ int main(int argc, char * argv[]) {
   uint64_t start_off = atoll(argv[5]);
   uint64_t end_off   = atoll(argv[6]) * MB;
 
+#ifdef HAVE_O_DIRECT
   int fd = open(filename, O_RDONLY|O_DIRECT);
-
+#else
+  printf("Warning: not using O_DIRECT; file system cache will be used.\n");
+  int fd = open(filename, O_RDONLY);
+#endif
   if(fd == -1) {
     perror("Couldn't open file");
     abort();
