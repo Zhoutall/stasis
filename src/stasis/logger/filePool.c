@@ -111,8 +111,15 @@ enum file_type stasis_log_file_pool_file_type(const struct dirent* file, lsn_t *
 /**
  * No latching required.  Does not touch shared state.
  */
-//int stasis_log_file_pool_file_filter(const struct dirent* file) {
+#ifdef ON_LINUX
+int stasis_log_file_pool_file_filter(const struct dirent* file) {
+#else
+#ifdef ON_MACOS
 int stasis_log_file_pool_file_filter(struct dirent* file) {
+#else
+#error Not on linux or macos?
+#endif
+#endif
   lsn_t junk;
   if(UNKNOWN != stasis_log_file_pool_file_type(file, &junk)) {
     return 1;
@@ -601,10 +608,17 @@ void key_destr(void * key) { free(key); }
 /**
  * Does no latching.  No shared state.
  */
-//int filesort(const struct dirent ** a, const struct dirent ** b) {
+#ifdef ON_LINUX
+int filesort(const struct dirent ** a, const struct dirent ** b) {
+#else
+#ifdef ON_MACOS
 int filesort(const void * ap, const void * bp) {
   const struct dirent  *const *const a = ap;
   const struct dirent *const *const b = bp;
+#else
+#error Not on linux or macos?
+#endif
+#endif
 
   int ret = strcmp((*a)->d_name, (*b)->d_name);
   DEBUG("%d = %s <=> %s\n", ret, (*a)->d_name, (*b)->d_name);
