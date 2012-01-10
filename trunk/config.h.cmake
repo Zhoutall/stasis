@@ -14,6 +14,5 @@
 #cmakedefine HAVE_TDESTROY
 #cmakedefine HAVE_POWL
 #cmakedefine DBUG
-//#ifndef HAVE_PTHREAD_STACK_MIN
-//#define PTHREAD_STACK_MIN 32768 // wild guess.
-//#endif
+#cmakedefine ON_LINUX
+#cmakedefine ON_MACOS

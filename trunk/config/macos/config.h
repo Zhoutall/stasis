@@ -1,5 +1,6 @@
 #define __USE_GNU
 #define _GNU_SOURCE
+#define ON_MACOS
 //#define HAVE_POSIX_FALLOCATE
 //#define HAVE_FDATASYNC
 //#define HAVE_SYNC_FILE_RANGE

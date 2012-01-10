@@ -1,5 +1,6 @@
 #define __USE_GNU
 #define _GNU_SOURCE
+#define ON_LINUX
 #define HAVE_POSIX_FALLOCATE
 #define HAVE_POSIX_MEMALIGN
 #define HAVE_POSIX_FADVISE
