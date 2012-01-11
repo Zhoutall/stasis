@@ -7,7 +7,7 @@ CC = gcc-4.2
 CXX = g++-4.2
 endif
 
-LIB += -lm -lpthread
+#LIB += -lm -lpthread
 
 CPPFLAGS += $(INC)
 CXXFLAGS += -O3 -g -Wall -pedantic -Wno-long-long -Wno-variadic-macros -fPIC $(CPPFLAGS)
@@ -63,12 +63,12 @@ bin/lib$(LIBNAME).a: $(patsubst %.cpp,bin/%.o,$(patsubst %.c,bin/%.o,$(LIBSRC)))
 bin/%.static: %.cpp bin/lib$(LIBNAME).a
 	@echo STATIC_EXE $@
 	@mkdir -p $(dir $@)
-	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ $(STATIC_LIBS)
+	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ -static -pthread $(STATIC_LIBS)
 
 bin/%.static: %.cc bin/lib$(LIBNAME).a
 	@echo STATIC_EXE $@
 	@mkdir -p $(dir $@)
-	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ -static-libstdc++ $(STATIC_LIBS)
+	@g++ $(LIB) $(CXXFLAGS) -o $@ $^ -static -pthread $(STATIC_LIBS)
 
 .PHONY: all clean print_cc_params print_cxx_params
 
