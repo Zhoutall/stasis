@@ -1,5 +1,8 @@
 SUBDIRS(fault_injection)
+CREATE_CHECK(check_hazard)
+CREATE_CHECK(check_kiss)
 CREATE_CHECK(check_redblack)
+CREATE_CHECK(check_concurrentBTree)
 CREATE_CHECK(check_concurrentHash)
 CREATE_CHECK(check_lhtable)
 CREATE_CHECK(check_concurrentRingbuffer)
