@@ -69,14 +69,13 @@ START_TEST(hazard_smokeTest) {
   *b = 1;
   char * ap = hazard_ref(h, 0, (hazard_ptr*)&a);
   char * bp = hazard_ref(h, 1, (hazard_ptr*)&b);
-  hazard_free(h, (hazard_ptr)a);
-  hazard_free(h, (hazard_ptr)b);
+  hazard_free(h, ap);
+  hazard_free(h, bp);
   hazard_scan(h,0);
   assert(*ap == 0);
   assert(*bp == 1);
-  hazard_ptr nul = 0;
-  hazard_ref(h, 0, &nul);
-  hazard_ref(h, 1, &nul);
+  hazard_release(h, 0);
+  hazard_release(h, 1);
   hazard_scan(h,0);
   hazard_deinit(h);
 } END_TEST
@@ -96,11 +95,10 @@ void * hazard_worker(void * hp) {
     if(p != NULL) {
       assert(*(int*)p == ptr_off);
     }
-    hazard_ptr nul = 0;
-    hazard_ref(h, 0, (hazard_ptr*)&nul);
+    hazard_release(h, 0);
     pthread_mutex_lock(&muts[ptr_off]);
     if(slots[ptr_off] != 0) {
-      hazard_ptr freeme = slots[ptr_off];
+      void* freeme = (void*)slots[ptr_off];
       slots[ptr_off] = 0;
       hazard_free(h, freeme);
     }
@@ -129,11 +127,10 @@ START_TEST(hazard_loadTest) {
     if(p != NULL) {
       printf("found slot\n");
       slots[i] = 0;
-      hazard_free(h, (hazard_ptr)p);
+      hazard_free(h, p);
     }
   }
-  hazard_ptr nul = 0;
-  hazard_ref(h, 0, (hazard_ptr*)&nul);
+  hazard_release(h, 0);
   free(threads);
   free(slots);
   free(muts);
