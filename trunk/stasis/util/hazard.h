@@ -6,6 +6,7 @@
  */
 #include <stasis/common.h>
 #include <stasis/util/time.h>
+#include <assert.h>
 #ifndef HAZARD_H_
 #define HAZARD_H_
 
@@ -15,7 +16,7 @@ typedef struct hazard_t hazard_t;
 typedef struct hazard_ptr_rec_t {
   hazard_t * h;
   hazard_ptr * hp;
-  hazard_ptr * rlist;
+  void ** rlist;
   int rlist_len;
   struct hazard_ptr_rec_t * next;
 } hazard_ptr_rec_t;
@@ -55,8 +56,8 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   qsort(ptrs, ptrs_len, sizeof(void*), intptr_cmp);
   int i = 0, j = 0;
   while(j < rec->rlist_len) {
-    while(i < ptrs_len && rec->rlist[j] > ptrs[i]) { i++; }
-    if(i == ptrs_len || rec->rlist[j] != ptrs[i]) {
+    while(i < ptrs_len && (hazard_ptr)rec->rlist[j] > ptrs[i]) { i++; }
+    if(i == ptrs_len || (hazard_ptr)rec->rlist[j] != ptrs[i]) {
       /// XXX for testing
       *(char*)rec->rlist[j] = (char)0xcd;
       free((void*)rec->rlist[j]);
@@ -143,8 +144,12 @@ static inline void * hazard_ref(hazard_t* h, int slot, hazard_ptr* ptr) {
   } while(rec->hp[slot] != *ptr);
   return (void*) rec->hp[slot];
 }
+static inline void hazard_release(hazard_t* h, int slot) {
+  hazard_ptr nul = 0;
+  hazard_ref(h, slot, &nul);
+}
 // Must be called *after* all references to ptr are removed.
-static inline void hazard_free(hazard_t* h,  hazard_ptr ptr) {
+static inline void hazard_free(hazard_t* h,  void* ptr) {
   hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
   rec->rlist[rec->rlist_len] = ptr;
   (rec->rlist_len)++;
