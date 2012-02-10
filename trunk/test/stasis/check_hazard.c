@@ -48,6 +48,11 @@ terms specified in this license.
 
 #include "../check_includes.h"
 
+int hazard_finalize(void*p) {
+  free(p);
+  return 1;
+}
+
 #include <stasis/util/hazard.h>
 #include <stasis/constants.h>
 #include <stasis/util/random.h>

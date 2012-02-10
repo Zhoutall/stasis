@@ -60,10 +60,9 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   while(j < rec->rlist_len) {
     while(i < ptrs_len && (hazard_ptr)rec->rlist[j] > ptrs[i]) { i++; }
     if(i == ptrs_len || (hazard_ptr)rec->rlist[j] != ptrs[i]) {
-      /// XXX for testing
-      *(char*)rec->rlist[j] = (char)0xcd;
-      free((void*)rec->rlist[j]);
-      rec->rlist[j] = 0;
+      if(hazard_finalize((void*)rec->rlist[j])) {
+        rec->rlist[j] = 0;
+      }
     }
     j++;
   }
