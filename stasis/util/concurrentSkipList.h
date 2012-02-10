@@ -157,7 +157,7 @@ static inline void * stasis_util_skiplist_insert(stasis_skiplist_t * list, void 
       x = hazard_set(list->h, 0, (void*)y);
       y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     }
-    update[i] = hazard_ref(list->h, i+2, (hazard_ptr*)&x);
+    update[i] = hazard_ref(list->h, (L-i)+2, (hazard_ptr*)&x);
   }
   // Note get_lock grabs the hazard pointer for x.
   x = stasis_util_skiplist_get_lock(list, x, searchKey, 1);
@@ -226,7 +226,7 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
       x = hazard_set(list->h, 0, (void*)y);
       y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     }
-    update[i] = hazard_set(list->h, 2+i, (void*)x);
+    update[i] = hazard_set(list->h, 2+(L-i), (void*)x);
   }
   y = hazard_set(list->h, 1, (void*)x);
   int isGarbage = 0;
