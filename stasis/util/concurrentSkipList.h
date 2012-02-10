@@ -134,16 +134,12 @@ static inline void * stasis_util_skiplist_search(stasis_skiplist_t * list, void 
       y = hazard_ref(list->h,1,stasis_util_skiplist_get_forward(x, i));
     }
   }
-  void * ret = y->key;
+  void * ret = cmp == 0 ? y->key : 0;
   hazard_release(list->h,0);
   hazard_release(list->h,1);
   // XXX no good way for clients to look at ref, since they might be free()ing
   // it in another thread...
-  if(cmp == 0) {
-    return ret;
-  } else {
-    return 0;
-  }
+  return ret;
 }
 static inline stasis_skiplist_node_t * stasis_util_skiplist_get_lock(
     stasis_skiplist_t * list, stasis_skiplist_node_t * x, void * searchKey, int i) {
