@@ -6,7 +6,40 @@
  */
 #include <stasis/common.h>
 #include <stasis/util/random.h>
+
+typedef struct stasis_skiplist_node_t {
+  void * key;
+  pthread_mutex_t level_mut;
+  char level;
+  char refcount;
+} stasis_skiplist_node_t;
+static inline stasis_skiplist_node_t** stasis_util_skiplist_get_forward_raw(
+    stasis_skiplist_node_t * x, int n) {
+  return (stasis_skiplist_node_t**)(((intptr_t)(x + 1))
+      +n*(sizeof(stasis_skiplist_node_t*)+sizeof(pthread_mutex_t)));
+}
+int hazard_finalize(stasis_skiplist_node_t * p) {
+  if(p->refcount == 0) {
+    for(int i = 1; i <= p->level; i++) {
+      stasis_skiplist_node_t * n = *stasis_util_skiplist_get_forward_raw(p, i);
+      __sync_fetch_and_sub(&n->refcount, 1);
+    }
+    free(p);
+    return 1;
+  } else {
+    return 0;
+  }
+}
 #include <stasis/util/hazard.h>
+static inline hazard_ptr* stasis_util_skiplist_get_forward(
+    stasis_skiplist_node_t * x, int n){
+  return (hazard_ptr*)stasis_util_skiplist_get_forward_raw(x,n);
+}
+static inline pthread_mutex_t * stasis_util_skiplist_get_forward_mutex(
+    stasis_skiplist_node_t * x, int n) {
+  return (pthread_mutex_t*)(stasis_util_skiplist_get_forward(x,n)+1);
+}
+
 #include <stdio.h>
 #ifndef CONCURRENTSKIPLIST_H_
 #define CONCURRENTSKIPLIST_H_
@@ -27,20 +60,6 @@ static inline int stasis_util_skiplist_random_level(pthread_key_t k) {
   // O(log n) bounds.
   return 1+__builtin_ctz(stasis_util_random_kiss_MWC(kiss));
 }
-typedef struct stasis_skiplist_node_t {
-  void * key;
-  pthread_mutex_t level_mut;
-  char level;
-} stasis_skiplist_node_t;
-static inline hazard_ptr* stasis_util_skiplist_get_forward(
-    stasis_skiplist_node_t * x, int n) {
-  return (hazard_ptr*)(((intptr_t)(x + 1))
-      +n*(sizeof(stasis_skiplist_node_t*)+sizeof(pthread_mutex_t)));
-}
-static inline pthread_mutex_t * stasis_util_skiplist_get_forward_mutex(
-    stasis_skiplist_node_t * x, int n) {
-  return (pthread_mutex_t*)(stasis_util_skiplist_get_forward(x,n)+1);
-}
 
 typedef struct {
   hazard_ptr header;
@@ -57,6 +76,7 @@ static inline hazard_ptr stasis_util_skiplist_make_node(int level, void * key) {
         + (level+1) * (sizeof(hazard_ptr) + sizeof(pthread_mutex_t)));
   x->key = key;
   x->level = level;
+  x->refcount = 0;
   pthread_mutex_init(&x->level_mut,0);
   for(int i = 0; i < level+1; i++) {
     pthread_mutex_init(stasis_util_skiplist_get_forward_mutex(x, i), 0);
@@ -261,6 +281,7 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
     pthread_mutex_lock(stasis_util_skiplist_get_forward_mutex(y, i));
     *stasis_util_skiplist_get_forward(x, i) = *stasis_util_skiplist_get_forward(y, i);
     *stasis_util_skiplist_get_forward(y, i) = (hazard_ptr)x;
+    __sync_fetch_and_add(&x->refcount, 1);
     pthread_mutex_unlock(stasis_util_skiplist_get_forward_mutex(x, i));
     pthread_mutex_unlock(stasis_util_skiplist_get_forward_mutex(y, i));
   }
