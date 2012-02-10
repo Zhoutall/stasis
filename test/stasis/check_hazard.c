@@ -62,7 +62,7 @@ terms specified in this license.
    @test
 */
 START_TEST(hazard_smokeTest) {
-  hazard_t * h = hazard_init(2, 10);
+  hazard_t * h = hazard_init(2, 2, 10);
   char * a = malloc(1);
   char * b = malloc(1);
   *a = 0;
@@ -107,7 +107,7 @@ void * hazard_worker(void * hp) {
   return 0;
 }
 START_TEST(hazard_loadTest) {
-  hazard_t * h = hazard_init(1, 2);
+  hazard_t * h = hazard_init(1, 1, 2);
   slots = malloc(sizeof(hazard_ptr) * NUM_SLOTS);
   muts = malloc(sizeof(pthread_mutex_t) * NUM_SLOTS);
   for(int i = 0; i < NUM_SLOTS; i++) {

@@ -146,7 +146,7 @@ Suite * check_suite(void) {
   tcase_set_timeout(tc, 0); // disable timeouts
 
   /* Sub tests are added, one per line, here */
-//  tcase_add_test(tc, concurrentSkipList_smokeTest);
+  tcase_add_test(tc, concurrentSkipList_smokeTest);
   tcase_add_test(tc, concurrentSkipList_concurrentTest);
 
   /* --------------------------------------------- */
