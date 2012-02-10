@@ -79,8 +79,8 @@ static inline int stasis_util_skiplist_cmp_helper2(
 }
 static inline stasis_skiplist_t * stasis_util_skiplist_init() {
   stasis_skiplist_t * list = malloc(sizeof(*list));
-  list->h = hazard_init(2, 10);
   list->levelCap = 32;
+  list->h = hazard_init(2+list->levelCap, 2, 100);
   list->levelHint = 1;
   pthread_mutex_init(&list->levelHint_mut, 0);
   list->header = stasis_util_skiplist_make_node(list->levelCap, NULL);
@@ -104,13 +104,13 @@ static inline void * stasis_util_skiplist_search(stasis_skiplist_t * list, void 
   // the = 0 here are to silence GCC -O3 warnings.
   stasis_skiplist_node_t *x, *y = 0;
   int cmp = 0;
-  x = hazard_ref(list->h,0,&list->header);
+  x = hazard_set(list->h,0,(void*)list->header);
   for(int i = list->levelHint; i > 0; i--) {
     y = hazard_ref(list->h,1,stasis_util_skiplist_get_forward(x, i));
     while((cmp = stasis_util_skiplist_cmp_helper(y, searchKey)) < 0) {
       // TODO: hazard_ref here is annoying.  We could get rid of first one, and
       // just toggle back and forth between 1 and 0 in the second.
-      x = hazard_ref(list->h,0,(hazard_ptr*)&y);
+      x = hazard_set(list->h,0,(void*)y);
       y = hazard_ref(list->h,1,stasis_util_skiplist_get_forward(x, i));
     }
   }
@@ -129,14 +129,14 @@ static inline stasis_skiplist_node_t * stasis_util_skiplist_get_lock(
     stasis_skiplist_t * list, stasis_skiplist_node_t * x, void * searchKey, int i) {
   stasis_skiplist_node_t * y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
   while(stasis_util_skiplist_cmp_helper(y, searchKey) < 0) {
-    x = hazard_ref(list->h, 0, (hazard_ptr*)&y);
+    x = hazard_set(list->h, 0, (void*)y);
     y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
   }
   pthread_mutex_lock(stasis_util_skiplist_get_forward_mutex(x, i));
   y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
   while(stasis_util_skiplist_cmp_helper(y, searchKey) < 0) {
     pthread_mutex_unlock(stasis_util_skiplist_get_forward_mutex(x, i));
-    x = hazard_ref(list->h, 0, (hazard_ptr*)&y);
+    x = hazard_set(list->h, 0, (void*)y);
     pthread_mutex_lock(stasis_util_skiplist_get_forward_mutex(x, i));
     y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
   }
@@ -149,16 +149,15 @@ static inline stasis_skiplist_node_t * stasis_util_skiplist_get_lock(
 static inline void * stasis_util_skiplist_insert(stasis_skiplist_t * list, void * searchKey) {
   stasis_skiplist_node_t * update[list->levelCap+1];
   stasis_skiplist_node_t *x, *y;
-  x = hazard_ref(list->h, 0, &list->header);
+  x = hazard_set(list->h, 0, (void*)list->header);
   int L = list->levelHint;
   for(int i = L; i > 0; i--) {
     y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     while(stasis_util_skiplist_cmp_helper(y, searchKey) < 0) {
-      x = hazard_ref(list->h, 0, (hazard_ptr*)&y);
+      x = hazard_set(list->h, 0, (void*)y);
       y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     }
-    // XXX how to register hazard pointers for this???
-    update[i] = x;
+    update[i] = hazard_ref(list->h, i+2, (hazard_ptr*)&x);
   }
   // Note get_lock grabs the hazard pointer for x.
   x = stasis_util_skiplist_get_lock(list, x, searchKey, 1);
@@ -169,11 +168,13 @@ static inline void * stasis_util_skiplist_insert(stasis_skiplist_t * list, void 
     pthread_mutex_unlock(stasis_util_skiplist_get_forward_mutex(x, 1));
     hazard_release(list->h, 0);
     hazard_release(list->h, 1);
-
+    for(int i = L; i > 0; i--) {
+      hazard_release(list->h, i+2);
+    }
     return oldKey;
   }
   hazard_ptr newnode = stasis_util_skiplist_make_node(stasis_util_skiplist_random_level(list->k), searchKey);
-  y = hazard_ref(list->h, 1, &newnode);
+  y = hazard_set(list->h, 1, (void*)newnode);
   pthread_mutex_lock(&y->level_mut);
   for(int i = L+1; i <= y->level; i++) {
     // XXX more special handling needed...
@@ -202,6 +203,9 @@ static inline void * stasis_util_skiplist_insert(stasis_skiplist_t * list, void 
   }
   hazard_release(list->h, 0);
   hazard_release(list->h, 1);
+  for(int i = L; i > 0; i--) {
+    hazard_release(list->h, i+2);
+  }
   return NULL;
 }
 /**
@@ -211,7 +215,7 @@ static inline void * stasis_util_skiplist_insert(stasis_skiplist_t * list, void 
 static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void * searchKey) {
   stasis_skiplist_node_t * update[list->levelCap+1];
   stasis_skiplist_node_t *x, *y;
-  x = hazard_ref(list->h, 0, &list->header);
+  x = hazard_set(list->h, 0, (void*)list->header);
   int L = list->levelHint;
   // for i = L downto 1
   int i;
@@ -219,12 +223,12 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
     i--; // decrement after check, so that i is 1 at the end of the loop.
     y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     while(stasis_util_skiplist_cmp_helper(y, searchKey) < 0) {
-      x = hazard_ref(list->h, 0, (hazard_ptr*)&y);
+      x = hazard_set(list->h, 0, (void*)y);
       y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(x, i));
     }
-    update[i] = x;
+    update[i] = hazard_set(list->h, 2+i, (void*)x);
   }
-  y = hazard_ref(list->h, 1, (hazard_ptr*)&x);
+  y = hazard_set(list->h, 1, (void*)x);
   int isGarbage = 0;
   int first = 1;
   do {
@@ -234,13 +238,16 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
       if(!isGarbage) {
         // This unlock was not in the pseudocode, but seems to be necessary...
         pthread_mutex_unlock(&y->level_mut);
-        printf("Unlocking y in code that was missing from pseudocode\n");
       }
     }
     y = hazard_ref(list->h, 1, stasis_util_skiplist_get_forward(y, i));
     if(stasis_util_skiplist_cmp_helper(y, searchKey) > 0) {
       hazard_release(list->h, 0);
       hazard_release(list->h, 1);
+      for(i = L+1; i > 1;) {
+        i--;
+        hazard_release(list->h, i+2);
+      }
       return NULL;
     }
     pthread_mutex_lock(&y->level_mut);
@@ -271,7 +278,10 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
   }
   hazard_release(list->h, 0);
   hazard_release(list->h, 1);
+  for(i = L+1; i > 1;) {
+    i--;
+    hazard_release(list->h, i+2);
+  }
   return oldKey;
 }
 #endif /* CONCURRENTSKIPLIST_H_ */
-//

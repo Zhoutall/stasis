@@ -24,6 +24,7 @@ typedef struct hazard_ptr_rec_t {
 struct hazard_t {
   pthread_key_t hp;
   int num_slots;
+  int stack_start;
   int num_r_slots;
   hazard_ptr_rec_t * tls_list;
   pthread_mutex_t tls_list_mut;
@@ -45,10 +46,11 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   pthread_mutex_lock(&h->tls_list_mut);
   hazard_ptr_rec_t * list = h->tls_list;
   while(list != NULL) {
-    ptrs_len += h->num_slots;
-    ptrs = realloc(ptrs, sizeof(hazard_ptr) * ptrs_len);
+    ptrs = realloc(ptrs, sizeof(hazard_ptr) * (ptrs_len+h->num_slots));
     for(int i = 0; i < h->num_slots; i++) {
-      ptrs[i + ptrs_len - h->num_slots] = list->hp[i];
+      ptrs[ptrs_len] = list->hp[i];
+      if(!ptrs[ptrs_len] && i >= h->stack_start) { break; }
+      ptrs_len++;
     }
     list = list->next;
   }
@@ -101,10 +103,22 @@ static void hazard_deinit_thread(void * p) {
     free(rec);
   }
 }
-static inline hazard_t* hazard_init(int hp_slots, int r_slots) {
+/**
+ * Init the state necessary for a set of hazard pointers.  This module
+ * implements an optimization where the higher numbered pointers can be treated
+ * as a fixed length stack.  Entries after the first NULL in that region will
+ * be ignored.  This allows applications that need varying numbers of hazard
+ * pointers to be collected efficiently.
+ *
+ * @param hp_slots the total number of slots.
+ * @param stack_start the first hazard pointer in the "stack" region.
+ * @param r_slots the max number of uncollected values per thread.
+ */
+static inline hazard_t* hazard_init(int hp_slots, int stack_start, int r_slots) {
   hazard_t * ret = malloc(sizeof(hazard_t));
   pthread_key_create(&ret->hp, hazard_deinit_thread);
   ret->num_slots = hp_slots;
+  ret->stack_start = stack_start;
   ret->num_r_slots = r_slots;
   ret->tls_list = NULL;
   pthread_mutex_init(&ret->tls_list_mut,0);
@@ -139,14 +153,27 @@ static inline void hazard_deinit(hazard_t * h) {
 static inline void * hazard_ref(hazard_t* h, int slot, hazard_ptr* ptr) {
   hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
   do {
-    rec->hp[slot] = *ptr;
-    __sync_synchronize();
-  } while(rec->hp[slot] != *ptr);
+    rec->hp[slot] = *ptr;         // Read ptr from ram
+    __sync_synchronize();         // Push HP to ram
+  } while(rec->hp[slot] != *ptr); // Re-read ptr from ram
   return (void*) rec->hp[slot];
 }
+/**
+ *  Set a hazard pointer using a known-stable address.  This is mostly useful
+ *  when the value pointed to by one hazard pointer should be pointed to by
+ *  another hazard pointer.
+ */
+static inline void* hazard_set(hazard_t* h, int slot, void* val) {
+  hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
+  rec->hp[slot] = (hazard_ptr)val;
+  // No need to synchronize.  Whatever is making the pointer stable will sync
+  // later.
+  return val;
+}
 static inline void hazard_release(hazard_t* h, int slot) {
-  hazard_ptr nul = 0;
-  hazard_ref(h, slot, &nul);
+  hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
+  __sync_synchronize(); // prevent the = 0 from being moved before this line.
+  rec->hp[slot] = 0;
 }
 // Must be called *after* all references to ptr are removed.
 static inline void hazard_free(hazard_t* h,  void* ptr) {
