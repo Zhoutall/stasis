@@ -165,8 +165,8 @@ static inline void * hazard_ref(hazard_t* h, int slot, hazard_ptr* ptr) {
 static inline void* hazard_set(hazard_t* h, int slot, void* val) {
   hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
   rec->hp[slot] = (hazard_ptr)val;
-  // No need to synchronize.  Whatever is making the pointer stable will sync
-  // later.
+  // val is stable (and on our stack!) so there's no reason to re-check it.
+  __sync_synchronize();
   return val;
 }
 static inline void hazard_release(hazard_t* h, int slot) {
