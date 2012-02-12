@@ -49,8 +49,11 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
     ptrs = realloc(ptrs, sizeof(hazard_ptr) * (ptrs_len+h->num_slots));
     for(int i = 0; i < h->num_slots; i++) {
       ptrs[ptrs_len] = list->hp[i];
-      if(!ptrs[ptrs_len] && i >= h->stack_start) { break; }
-      ptrs_len++;
+      if(!ptrs[ptrs_len]) {
+        if(i >= stack_start) { break; }
+      } else {
+        ptrs_len++;
+      }
     }
     list = list->next;
   }
@@ -90,6 +93,7 @@ static void hazard_deinit_thread(void * p) {
       }
     }
     pthread_cond_broadcast(&rec->h->thread_shutdown);
+    pthread_mutex_lock(&rec->h->tls_list_mut);
     hazard_ptr_rec_t ** last = &rec->h->tls_list;
     hazard_ptr_rec_t * list = *last;
     while(list != rec) {
@@ -97,6 +101,7 @@ static void hazard_deinit_thread(void * p) {
       list = *last;
     }
     *last = rec->next;
+    pthread_mutex_unlock(&rec->h->tls_list_mut);
     free(rec->hp);
     free(rec->rlist);
     free(rec);
@@ -131,10 +136,10 @@ static inline hazard_ptr_rec_t * hazard_ensure_tls(hazard_t * h) {
     rec->hp = calloc(h->num_slots, sizeof(hazard_ptr));
     rec->rlist = calloc(h->num_r_slots, sizeof(hazard_ptr));
     rec->rlist_len = 0;
+    rec->h = h;
     pthread_setspecific(h->hp, rec);
     pthread_mutex_lock(&h->tls_list_mut);
     rec->next = h->tls_list;
-    rec->h = h;
     h->tls_list = rec;
     pthread_mutex_unlock(&h->tls_list_mut);
   }
@@ -179,8 +184,12 @@ static inline void hazard_free(hazard_t* h,  void* ptr) {
   hazard_ptr_rec_t * rec = hazard_ensure_tls(h);
   rec->rlist[rec->rlist_len] = ptr;
   (rec->rlist_len)++;
-  if(rec->rlist_len == h->num_r_slots) {
+  while(rec->rlist_len == h->num_r_slots) {
     hazard_scan(h, rec);
+    if(rec->rlist_len == h->num_r_slots) {
+      struct timespec slp = stasis_double_to_timespec(0.001);
+      nanosleep(&slp,0);
+    }
   }
 }
 #endif /* HAZARD_H_ */
