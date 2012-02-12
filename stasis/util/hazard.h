@@ -50,7 +50,7 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
     for(int i = 0; i < h->num_slots; i++) {
       ptrs[ptrs_len] = list->hp[i];
       if(!ptrs[ptrs_len]) {
-        if(i >= stack_start) { break; }
+        if(i >= h->stack_start) { break; }
       } else {
         ptrs_len++;
       }
