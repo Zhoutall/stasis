@@ -16,7 +16,7 @@ static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
 #else
 static inline long stasis_util_skiplist_cmp(const void *a, const void *b) {
   // Note: Below, we ensure a and b are both >= 0 and small.
-  return (long)(a-b);
+  return ((long)a-(long)b);
 }
 #endif
 #include <stasis/util/concurrentSkipList.h>
@@ -36,7 +36,7 @@ int concurrent = 0;
 stasis_skiplist_t * list;
 void * worker(void* p) {
   char ** keys = p;
-  int collisions = 0;
+  intptr_t collisions = 0;
   for(int i = 0; i < num_keys; i++) {
     char * ret = stasis_util_skiplist_insert(list, keys[i]);
     if(ret != NULL) {
@@ -75,7 +75,7 @@ START_TEST(concurrentSkipList_smokeTest) {
   struct timeval tv;
   gettimeofday(&tv,0);
   double start = stasis_timeval_to_double(tv);
-  int collisions = worker(keys);
+  intptr_t collisions = (intptr_t)worker(keys);
   assert(collisions == 0);
   gettimeofday(&tv,0);
   double stop = stasis_timeval_to_double(tv);
@@ -134,11 +134,39 @@ START_TEST(concurrentSkipList_concurrentTest) {
   double elapsed = stop - start;
   double opspersec = 3.0*(double)num_keys*num_threads / elapsed;
   double opsperthsec = 3.0*(double)num_keys / elapsed;
-  printf("Run took %f seconds.  %f ops/sec %d threads %f ops/thread-second\n", elapsed, num_threads, opspersec, opsperthsec);
+  printf("Run took %f seconds.  %f ops/sec %d threads %f ops/thread-second\n", elapsed, opspersec, num_threads, opsperthsec);
   stasis_util_skiplist_deinit(list);
   free(keys);
 } END_TEST
+void * worker2(void * p) {
+  for(int i = 0; i < num_keys; i++) {
+    void* key = (void*)stasis_util_random64(1000);
+    switch(stasis_util_random64(3)) {
+    case 0: {
+      stasis_util_skiplist_insert(list, key);
+    } break;
+    case 1: {
+      stasis_util_skiplist_search(list, key);
+    } break;
+    case 2: {
+      stasis_util_skiplist_delete(list, key);
+    } break;
+    }
+  }
+  return 0;
+}
+START_TEST(concurrentSkipList_concurrentRandom) {
+  list = stasis_util_skiplist_init();
+  pthread_t thread[num_threads];
+  for(int i = 0; i < num_threads; i++) {
+    pthread_create(&thread[i], 0, worker2, 0);
+  }
+  for(int i = 0; i < num_threads; i++) {
+    pthread_join(thread[i], 0);
+  }
 
+  stasis_util_skiplist_deinit(list);
+} END_TEST
 Suite * check_suite(void) {
   Suite *s = suite_create("concurrentSkipList");
   /* Begin a new test */
@@ -148,6 +176,7 @@ Suite * check_suite(void) {
   /* Sub tests are added, one per line, here */
   tcase_add_test(tc, concurrentSkipList_smokeTest);
   tcase_add_test(tc, concurrentSkipList_concurrentTest);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
 
   /* --------------------------------------------- */
 
