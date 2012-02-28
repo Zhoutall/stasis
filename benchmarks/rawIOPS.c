@@ -8,11 +8,14 @@
 #include <stasis/common.h>
 #include <stasis/util/random.h>
 #include <stasis/util/time.h>
+#include <stasis/util/histogram.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
+
+DECLARE_HISTOGRAM_64(iop_hist)
 
 static const long MB = (1024 * 1024);
 
@@ -50,7 +53,9 @@ void * worker(void * argp) {
     offset &= ~(arg->page_size-1);
     DEBUG("pread(%d %x %d %lld)\n", arg->fd,
           (unsigned int)buf, (int)arg->page_size, (long long)offset);
+    stasis_histogram_tick(&iop_hist);
     err = pread(arg->fd, buf, arg->page_size, offset);
+    stasis_histogram_tock(&iop_hist);
     if(err == -1) {
       perror("Could not read from file"); fflush(stderr); fflush(stdout); abort();
     }
@@ -120,6 +125,6 @@ int main(int argc, char * argv[]) {
   printf("%d threads %lld mb %lld ops / %f seconds = %f IOPS.\n", num_threads, (long long)(end_off / MB), (long long)op_count, wallclock_elapsed, ((double)op_count) / wallclock_elapsed);
 
   close(fd);
-
+  stasis_histograms_auto_dump();
   return 0;
 }
