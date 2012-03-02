@@ -26,6 +26,8 @@ struct hazard_t {
   int num_slots;
   int stack_start;
   int num_r_slots;
+  int (*finalizer)(void *, void* conf);
+  void * conf;
   hazard_ptr_rec_t * tls_list;
   pthread_mutex_t tls_list_mut;
   pthread_cond_t thread_shutdown;
@@ -33,7 +35,7 @@ struct hazard_t {
 static int intptr_cmp(const void * ap, const void *bp) {
   intptr_t a = *(intptr_t*)ap;
   intptr_t b = *(intptr_t*)bp;
-  return (a < b) ? -1 : ( (a > b) ? 1 : 0);
+  return (a < b) ? -1 : ( (a > b) ? 1 : 0 );
 }
 static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   if(rec == NULL) {
@@ -47,11 +49,14 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   hazard_ptr_rec_t * list = h->tls_list;
   while(list != NULL) {
     ptrs = realloc(ptrs, sizeof(hazard_ptr) * (ptrs_len+h->num_slots));
+//    int would_stop = 0;
     for(int i = 0; i < h->num_slots; i++) {
       ptrs[ptrs_len] = list->hp[i];
       if(!ptrs[ptrs_len]) {
+//        if(i >= h->stack_start) { would_stop = 1; }
         if(i >= h->stack_start) { break; }
       } else {
+//        assert(! would_stop);
         ptrs_len++;
       }
     }
@@ -63,7 +68,7 @@ static inline void hazard_scan(hazard_t * h, hazard_ptr_rec_t * rec) {
   while(j < rec->rlist_len) {
     while(i < ptrs_len && (hazard_ptr)rec->rlist[j] > ptrs[i]) { i++; }
     if(i == ptrs_len || (hazard_ptr)rec->rlist[j] != ptrs[i]) {
-      if(hazard_finalize((void*)rec->rlist[j])) {
+      if(h->finalizer((void*)rec->rlist[j], h->conf)) {
         rec->rlist[j] = 0;
       }
     }
@@ -86,7 +91,9 @@ static void hazard_deinit_thread(void * p) {
       hazard_scan(rec->h, rec);
       if(rec->rlist_len != 0) {
         pthread_mutex_lock(&rec->h->tls_list_mut);
-        struct timespec ts = stasis_double_to_timespec(0.1);
+        struct timeval tv;
+        gettimeofday(&tv, 0);
+        struct timespec ts = stasis_double_to_timespec(stasis_timeval_to_double(tv) + 0.01);
         pthread_cond_timedwait(&rec->h->thread_shutdown,
           &rec->h->tls_list_mut, &ts);
         pthread_mutex_unlock(&rec->h->tls_list_mut);
@@ -118,13 +125,16 @@ static void hazard_deinit_thread(void * p) {
  * @param stack_start the first hazard pointer in the "stack" region.
  * @param r_slots the max number of uncollected values per thread.
  */
-static inline hazard_t* hazard_init(int hp_slots, int stack_start, int r_slots) {
+static inline hazard_t* hazard_init(int hp_slots, int stack_start, int r_slots,
+    int (*finalizer)(void*, void*), void * conf) {
   hazard_t * ret = malloc(sizeof(hazard_t));
   pthread_key_create(&ret->hp, hazard_deinit_thread);
   ret->num_slots = hp_slots;
   ret->stack_start = stack_start;
   ret->num_r_slots = r_slots;
   ret->tls_list = NULL;
+  ret->finalizer = finalizer;
+  ret->conf = conf;
   pthread_mutex_init(&ret->tls_list_mut,0);
   pthread_cond_init(&ret->thread_shutdown, 0);
   return ret;

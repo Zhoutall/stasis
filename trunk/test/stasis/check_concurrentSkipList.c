@@ -6,6 +6,12 @@
  */
 #include <string.h>
 #include <assert.h>
+#include <stasis/common.h>
+void * key_dup(intptr_t p) {
+  intptr_t * ret = malloc(sizeof(intptr_t));
+  *ret = p;
+  return ret;
+}
 #ifdef STRINGS
 static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
   if(a == NULL) return -1;
@@ -16,7 +22,7 @@ static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
 #else
 static inline long stasis_util_skiplist_cmp(const void *a, const void *b) {
   // Note: Below, we ensure a and b are both >= 0 and small.
-  return ((long)a-(long)b);
+  return ((long)*(intptr_t*)a-(long)*(intptr_t*)b);
 }
 #endif
 #include <stasis/util/concurrentSkipList.h>
@@ -35,25 +41,26 @@ int num_threads = 4;
 int concurrent = 0;
 stasis_skiplist_t * list;
 void * worker(void* p) {
-  char ** keys = p;
+  intptr_t * keys = p;
   intptr_t collisions = 0;
   for(int i = 0; i < num_keys; i++) {
-    char * ret = stasis_util_skiplist_insert(list, keys[i]);
+    char * ret = stasis_util_skiplist_insert(list, key_dup(keys[i]));
     if(ret != NULL) {
-      assert(!stasis_util_skiplist_cmp(ret, keys[i]));
+      assert(!stasis_util_skiplist_cmp(ret, &keys[i]));
       collisions++;
     }
   }
   for(int i = 0; i < num_keys; i++) {
-    char * ret = stasis_util_skiplist_search(list, keys[i]);
-    if(!concurrent) assert(!stasis_util_skiplist_cmp(ret, keys[i]));
+    char * ret = stasis_util_skiplist_search(list, &keys[i]);
+    if(!concurrent) assert(!stasis_util_skiplist_cmp(ret, &keys[i]));
   }
   for(int i = 0; i < num_keys; i++) {
-    char * ret = stasis_util_skiplist_delete(list, keys[i]);
+    char * ret = stasis_util_skiplist_delete(list, &keys[i]);
     if(ret == NULL) {
       collisions--;
     }
   }
+  stasis_skiplist_release(list);
   return (void*) collisions;
 }
 /**
@@ -140,19 +147,20 @@ START_TEST(concurrentSkipList_concurrentTest) {
 } END_TEST
 void * worker2(void * p) {
   for(int i = 0; i < num_keys; i++) {
-    void* key = (void*)stasis_util_random64(1000);
+    intptr_t key = (intptr_t)stasis_util_random64(1000);
     switch(stasis_util_random64(3)) {
     case 0: {
-      stasis_util_skiplist_insert(list, key);
+      stasis_util_skiplist_insert(list, key_dup(key));
     } break;
     case 1: {
-      stasis_util_skiplist_search(list, key);
+      stasis_util_skiplist_search(list, &key);
     } break;
     case 2: {
-      stasis_util_skiplist_delete(list, key);
+      stasis_util_skiplist_delete(list, &key);
     } break;
     }
   }
+  stasis_skiplist_release(list);
   return 0;
 }
 START_TEST(concurrentSkipList_concurrentRandom) {
