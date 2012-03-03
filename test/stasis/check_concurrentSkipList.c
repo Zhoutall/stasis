@@ -7,6 +7,8 @@
 #include <string.h>
 #include <assert.h>
 #include <stasis/common.h>
+
+int num_keys    = 1000000;
 void * key_dup(intptr_t p) {
   intptr_t * ret = malloc(sizeof(intptr_t));
   *ret = p;
@@ -22,6 +24,8 @@ static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
 #else
 static inline long stasis_util_skiplist_cmp(const void *a, const void *b) {
   // Note: Below, we ensure a and b are both >= 0 and small.
+  //assert(*(intptr_t*)a < 2*num_keys);
+  //assert(*(intptr_t*)b < 2*num_keys);
   return ((long)*(intptr_t*)a-(long)*(intptr_t*)b);
 }
 #endif
@@ -36,7 +40,6 @@ static inline long stasis_util_skiplist_cmp(const void *a, const void *b) {
 
 #define LOG_NAME   "check_lhtable.log"
 
-int num_keys    = 1000000;
 int num_threads = 4;
 int concurrent = 0;
 stasis_skiplist_t * list;
@@ -184,6 +187,15 @@ Suite * check_suite(void) {
   /* Sub tests are added, one per line, here */
   tcase_add_test(tc, concurrentSkipList_smokeTest);
   tcase_add_test(tc, concurrentSkipList_concurrentTest);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
+  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
   tcase_add_test(tc, concurrentSkipList_concurrentRandom);
 
   /* --------------------------------------------- */
