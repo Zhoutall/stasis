@@ -22,11 +22,11 @@ static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
   return strcmp(a,b);
 }
 #else
-static inline long stasis_util_skiplist_cmp(const void *a, const void *b) {
+static inline int stasis_util_skiplist_cmp(const void *a, const void *b) {
   // Note: Below, we ensure a and b are both >= 0 and small.
   //assert(*(intptr_t*)a < 2*num_keys);
   //assert(*(intptr_t*)b < 2*num_keys);
-  return ((long)*(intptr_t*)a-(long)*(intptr_t*)b);
+  return ((int)*(intptr_t*)a-(long)*(intptr_t*)b);
 }
 #endif
 #include <stasis/util/concurrentSkipList.h>
@@ -70,7 +70,7 @@ void * worker(void* p) {
    @test
 */
 START_TEST(concurrentSkipList_smokeTest) {
-  list = stasis_util_skiplist_init();
+  list = stasis_util_skiplist_init(stasis_util_skiplist_cmp, 0);
   char ** const keys = malloc(sizeof(char*) * num_keys);
   for(int i = 0; i < num_keys; i++) {
 #ifdef STRINGS
@@ -102,7 +102,7 @@ START_TEST(concurrentSkipList_smokeTest) {
 } END_TEST
 
 START_TEST(concurrentSkipList_concurrentTest) {
-  list = stasis_util_skiplist_init();
+  list = stasis_util_skiplist_init(stasis_util_skiplist_cmp, 0);
   concurrent = 1;
   char *** const keys = malloc(sizeof(char**) * num_threads);
   for(int j = 0; j < num_threads; j++) {
@@ -167,7 +167,7 @@ void * worker2(void * p) {
   return 0;
 }
 START_TEST(concurrentSkipList_concurrentRandom) {
-  list = stasis_util_skiplist_init();
+  list = stasis_util_skiplist_init(stasis_util_skiplist_cmp, 0);
   pthread_t thread[num_threads];
   for(int i = 0; i < num_threads; i++) {
     pthread_create(&thread[i], 0, worker2, 0);

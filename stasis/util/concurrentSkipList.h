@@ -11,10 +11,10 @@
 #include <stasis/common.h>
 #include <stasis/util/random.h>
 
+BEGIN_C_DECLS
+
 //#define stasis_util_skiplist_assert(x) assert(x)
 #define stasis_util_skiplist_assert(x)
-
-
 
 #define STASIS_SKIPLIST_HP_COUNT 3
 
@@ -34,6 +34,8 @@ typedef struct {
   pthread_key_t k;
   hazard_t * h;
   hazard_t * ret_hazard;
+  int (*cmp)(const void *a, const void *b);
+  int (*finalize)(const void *node, const void *nul);
 } stasis_skiplist_t;
 static inline stasis_skiplist_node_t** stasis_util_skiplist_get_forward_raw(
     stasis_skiplist_node_t * x, int n) {
@@ -48,7 +50,7 @@ static inline pthread_mutex_t * stasis_util_skiplist_get_forward_mutex(
     stasis_skiplist_node_t * x, int n) {
   return (pthread_mutex_t*)(stasis_util_skiplist_get_forward(x,n)+1);
 }
-int hazard_finalize(void * pp, void * conf) {
+int stasis_util_skiplist_node_finalize(void * pp, void * conf) {
   stasis_skiplist_node_t * p = pp;
   stasis_skiplist_t * list = conf;
   if(p->refcount == 0) {
@@ -56,6 +58,7 @@ int hazard_finalize(void * pp, void * conf) {
     for(int i = 1; i <= p->level; i++) {
       stasis_skiplist_node_t * n = *stasis_util_skiplist_get_forward_raw(p, i);
       int oldval = __sync_sub_and_fetch(&n->refcount, 1);
+      (void)oldval;
       stasis_util_skiplist_assert(oldval >= 0);
     }
     hazard_free(list->ret_hazard, oldKey);
@@ -68,7 +71,7 @@ int hazard_finalize(void * pp, void * conf) {
     return 0;
   }
 }
-int node_finalize(void * p, void * ignored) {
+int stasis_util_skiplist_default_key_finalize(void * p, void * ignored) {
   free(p);
   return 1;
 }
@@ -116,7 +119,7 @@ static inline int stasis_util_skiplist_cmp_helper(
   int ret;
   if(akey == NULL) { ret = (bkey == NULL ? 0 : -1); }
   else if(bkey == NULL) { ret = 1; }
-  else {ret = stasis_util_skiplist_cmp(akey, bkey); }
+  else {ret = list->cmp(akey, bkey); }
   hazard_release(list->ret_hazard, 1);
   return ret;
 }
@@ -128,16 +131,21 @@ static inline int stasis_util_skiplist_cmp_helper2(
   hazard_release(list->ret_hazard, 2);
   return ret;
 }
-static inline stasis_skiplist_t * stasis_util_skiplist_init() {
+static inline stasis_skiplist_t * stasis_util_skiplist_init(
+    int (*cmp)(const void*, const void*),
+    void (*finalize)(void *, void * nul)) {
   stasis_skiplist_t * list = malloc(sizeof(*list));
   list->levelCap = 32;
   list->h = hazard_init(STASIS_SKIPLIST_HP_COUNT+list->levelCap,
-      STASIS_SKIPLIST_HP_COUNT, 250, hazard_finalize, list);
-  list->ret_hazard = hazard_init(3, 3, 250, node_finalize, NULL);
+      STASIS_SKIPLIST_HP_COUNT, 250, stasis_util_skiplist_node_finalize, list);
+  list->finalize
+    = finalize ? finalize : stasis_util_skiplist_default_key_finalize;
+  list->ret_hazard = hazard_init(3, 3, 250, list->finalize, NULL);
   list->levelHint = 1;
   pthread_mutex_init(&list->levelHint_mut, 0);
   list->header = stasis_util_skiplist_make_node(list->levelCap, NULL);
   pthread_key_create(&(list->k), stasis_util_skiplist_cleanup_tls);
+  list->cmp = cmp;
   return list;
 }
 static inline void stasis_util_skiplist_deinit(stasis_skiplist_t * list) {
@@ -380,4 +388,6 @@ static inline void * stasis_util_skiplist_delete(stasis_skiplist_t * list, void 
 void stasis_skiplist_release(stasis_skiplist_t * list) {
   hazard_release(list->ret_hazard, 0);
 }
+
+END_C_DECLS
 #endif /* CONCURRENTSKIPLIST_H_ */
