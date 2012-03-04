@@ -35,7 +35,7 @@ typedef struct {
   hazard_t * h;
   hazard_t * ret_hazard;
   int (*cmp)(const void *a, const void *b);
-  int (*finalize)(const void *node, const void *nul);
+  int (*finalize)(void *node, void *nul);
 } stasis_skiplist_t;
 static inline stasis_skiplist_node_t** stasis_util_skiplist_get_forward_raw(
     stasis_skiplist_node_t * x, int n) {
@@ -133,7 +133,7 @@ static inline int stasis_util_skiplist_cmp_helper2(
 }
 static inline stasis_skiplist_t * stasis_util_skiplist_init(
     int (*cmp)(const void*, const void*),
-    void (*finalize)(void *, void * nul)) {
+    int (*finalize)(void *, void * nul)) {
   stasis_skiplist_t * list = malloc(sizeof(*list));
   list->levelCap = 32;
   list->h = hazard_init(STASIS_SKIPLIST_HP_COUNT+list->levelCap,
