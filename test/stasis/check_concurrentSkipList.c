@@ -175,7 +175,9 @@ START_TEST(concurrentSkipList_concurrentRandom) {
   for(int i = 0; i < num_threads; i++) {
     pthread_join(thread[i], 0);
   }
-
+  for(intptr_t i = 0; i < 1000; i++) {
+    stasis_util_skiplist_delete(list, &i);
+  }
   stasis_util_skiplist_deinit(list);
 } END_TEST
 Suite * check_suite(void) {
@@ -187,15 +189,6 @@ Suite * check_suite(void) {
   /* Sub tests are added, one per line, here */
   tcase_add_test(tc, concurrentSkipList_smokeTest);
   tcase_add_test(tc, concurrentSkipList_concurrentTest);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
-  tcase_add_test(tc, concurrentSkipList_concurrentRandom);
   tcase_add_test(tc, concurrentSkipList_concurrentRandom);
 
   /* --------------------------------------------- */
