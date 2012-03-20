@@ -1,5 +1,6 @@
 SUBDIRS(fault_injection)
 CREATE_CHECK(check_concurrentSkipList)
+CREATE_CHECK(check_bloomFilter)
 CREATE_CHECK(check_hazard)
 CREATE_CHECK(check_kiss)
 CREATE_CHECK(check_redblack)
