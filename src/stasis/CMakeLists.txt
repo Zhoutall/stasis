@@ -1,4 +1,5 @@
 ADD_LIBRARY(stasis util/crc32.c
+                   util/bloomFilter.c
                    util/redblack.c
                    util/lhtable.c
                    util/concurrentHash.c
